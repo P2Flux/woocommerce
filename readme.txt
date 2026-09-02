@@ -95,6 +95,13 @@ daily for three days and the customer is told to top up. An approval that ran sh
 by retrying, so the customer gets a "Restore USDC approval" button on their account page. A customer
 who revoked their authorization has their subscription cancelled.
 
+= I changed a subscription's price. What happens? =
+
+Renewals stop, with a note on the order, because the customer's wallet authorized the old amount and
+the plugin never charges an old authorization for new terms. The customer's account page explains
+the new amount and offers "Re-authorize": one signature in their wallet, and the outstanding renewal
+is collected straight away. The old authorization stays on record so its payments remain refundable.
+
 = What if the customer cancels? =
 
 WooCommerce stops collecting immediately - that part is entirely in the store's hands. The standing
