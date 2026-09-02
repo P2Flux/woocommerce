@@ -87,6 +87,48 @@ class P2Flux_WC_Payments {
 	}
 
 	/**
+	 * A renewal the customer paid by hand must never also be collected on chain.
+	 *
+	 * The fallback is real and worth having: a renewal that could not be collected can be paid from
+	 * the order-pay screen like any one-off. But the recurring authorization still has that period
+	 * uncollected, and a retry queued before the manual payment would happily take it - a second
+	 * payment for one renewal.
+	 *
+	 * So the period is marked satisfied, every queued job for the order is dropped, and the charger
+	 * refuses it from then on. The uncollected period costs nothing: there is no catch-up billing,
+	 * and the next renewal falls in a later period.
+	 *
+	 * @param WC_Order $order Order that was just paid.
+	 * @return void
+	 */
+	private static function stop_recurring_collection( $order ) {
+		if ( ! function_exists( 'wcs_get_subscriptions_for_renewal_order' ) ) {
+			return;
+		}
+
+		$subscriptions = wcs_get_subscriptions_for_renewal_order( $order );
+		if ( empty( $subscriptions ) ) {
+			return;
+		}
+
+		$subscription = reset( $subscriptions );
+		$order->update_meta_data( '_p2flux_manual_paid', 1 );
+		$order->save();
+
+		foreach ( P2Flux_WC_Periods::for_order( $order->get_id() ) as $row ) {
+			if ( in_array( $row['state'], array( P2Flux_WC_Periods::SETTLED, P2Flux_WC_Periods::MANUAL ), true ) ) {
+				continue;
+			}
+			P2Flux_WC_Periods::set_state( $row['auth_id'], (int) $row['period_index'], P2Flux_WC_Periods::MANUAL );
+		}
+
+		P2Flux_WC_Jobs::unschedule_subscription( $subscription );
+		P2Flux_WC_Collection::set( $subscription, P2Flux_WC_Collection::NORMAL, array( 'renewal_order_id' => 0 ) );
+		$order->add_order_note( __( 'P2Flux: this renewal was paid directly, so the recurring charge for it has been cancelled. The subscription continues normally.', 'p2flux-for-woocommerce' ) );
+		$order->save();
+	}
+
+	/**
 	 * Verify a transaction the browser reported, and pay the order if it is real.
 	 *
 	 * @param WC_Order $order   Order.
@@ -214,6 +256,8 @@ class P2Flux_WC_Payments {
 		);
 		$order->payment_complete( $hash );
 		$order->save();
+
+		self::stop_recurring_collection( $order );
 
 		P2Flux_WC_Jobs::unschedule_order( $order->get_id() );
 	}

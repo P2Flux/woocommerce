@@ -63,6 +63,7 @@ function p2flux_wc_load() {
 			'account',
 			'blocks',
 			'lifecycle',
+			'cli',
 		) as $class
 	) {
 		require_once __DIR__ . '/includes/class-p2flux-wc-' . $class . '.php';

@@ -27,8 +27,9 @@ while IFS= read -r file; do
   php -l "$file" >/dev/null || note "syntax error in $file"
 done < <(find "$root/includes" "$root/p2flux-for-woocommerce.php" "$root/uninstall.php" -name '*.php')
 
-# The offline suite.
+# The offline suites.
 php "$root/tests/unit.php" >/dev/null || note "the unit suite does not pass"
+php "$root/tests/integration.php" >/dev/null || note "the invariant suite does not pass"
 
 [ "$fail" -eq 0 ] && echo "release checks passed"
 exit "$fail"
