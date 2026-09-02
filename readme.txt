@@ -62,6 +62,12 @@ request itself; the response is cached for an hour. No order, customer or store 
 Terms of service: https://www.coinbase.com/legal/user_agreement. Privacy policy:
 https://www.coinbase.com/legal/privacy.
 
+== Documentation ==
+
+The full guide - installation, every renewal outcome, cancellation, refunds, recovery,
+troubleshooting - is at https://p2flux.com/docs/woocommerce.html. Developer documentation and the
+source are at https://github.com/P2Flux/woocommerce.
+
 == Frequently Asked Questions ==
 
 = Where does the money go? =

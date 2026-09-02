@@ -27,6 +27,27 @@ while IFS= read -r file; do
   php -l "$file" >/dev/null || note "syntax error in $file"
 done < <(find "$root/includes" "$root/p2flux-for-woocommerce.php" "$root/uninstall.php" -name '*.php')
 
+# Documentation must not teach the wrong thing.
+# The capability prefix must never appear in merchant-facing text (an example that shows one is an
+# example that gets pasted), and the development period fixture must never be described as a feature.
+grep -q "p2s2\." "$root/readme.txt" && note "readme.txt exposes a capability prefix"
+grep -qi "60.second\|short.period\|P2FLUX_WC_DEV" "$root/readme.txt" && note "readme.txt documents the development fixture"
+# The vendored SDK must be the release both SDKs share.
+grep -q "v0.6.0" "$root/includes/vendor/p2flux/VENDORED.md" || note "vendored SDK is not v0.6.0"
+# The bundled zip: build it the way the release does, and look inside.
+tmp="$(mktemp -d)"
+( cd "$root" && git archive --format=tar --prefix=p2flux-for-woocommerce/ HEAD | tar -x -C "$tmp" ) 2>/dev/null
+if [ -d "$tmp/p2flux-for-woocommerce" ]; then
+  # .distignore is what `wp dist-archive` honours; apply it the same way.
+  while IFS= read -r pattern; do
+    case "$pattern" in ''|\#*|!*) continue;; esac
+    rm -rf "$tmp/p2flux-for-woocommerce/$pattern"
+  done < "$root/.distignore"
+  grep -rl "p2flux-test-fixture\|P2FLUX_WC_DEV_SHORT_PERIODS" "$tmp/p2flux-for-woocommerce" 2>/dev/null | grep -v architecture.md | grep -q . && note "the release archive contains the development fixture"
+  grep -rn "curl_" "$tmp/p2flux-for-woocommerce" --include='*.php' 2>/dev/null | grep -q . && note "the release archive calls curl"
+fi
+rm -rf "$tmp"
+
 # The offline suites.
 php "$root/tests/unit.php" >/dev/null || note "the unit suite does not pass"
 php "$root/tests/integration.php" >/dev/null || note "the invariant suite does not pass"
