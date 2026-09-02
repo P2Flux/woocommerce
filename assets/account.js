@@ -72,7 +72,7 @@
 							return;
 						}
 
-						onResult( data, button );
+						onResult( data, button, popup );
 					} );
 				} )
 				.catch( function () {
@@ -97,6 +97,35 @@
 			if ( response && response.success && response.data.message ) {
 				say( response.data.message );
 			}
+		} );
+	} );
+
+	walletFlow( document.getElementById( 'p2flux-reauth' ), config.ajax.reauth, 'subscribe', function ( data, button, popup ) {
+		if ( 'p2flux.subscription.created' !== data.type ) {
+			return;
+		}
+
+		// The new authorization is a claim until the store has checked it against P2Flux; the
+		// window stays open showing "payment pending" until it hears back.
+		post( config.ajax.reauthorized, { subscription_capability: data.subscription || '' } ).then( function ( response ) {
+			var result = response && response.data ? response.data : {};
+
+			if ( 'finalized' === result.status ) {
+				if ( popup && ! popup.closed ) {
+					popup.postMessage( { type: 'p2flux.finalized', tx_hash: result.tx_hash || undefined }, origin );
+				}
+				say( result.message || config.i18n.reauthorized );
+				window.setTimeout( function () {
+					window.location.reload();
+				}, 2500 );
+				return;
+			}
+
+			if ( popup && ! popup.closed ) {
+				popup.postMessage( { type: 'p2flux.activation_failed', code: result.code || 'UNKNOWN' }, origin );
+			}
+			button.disabled = false;
+			say( result.message || config.i18n.failed );
 		} );
 	} );
 

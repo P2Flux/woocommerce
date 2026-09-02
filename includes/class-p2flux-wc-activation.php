@@ -39,11 +39,22 @@ class P2Flux_WC_Activation {
 				if ( ! $fresh ) {
 					return new WP_Error( 'INVALID_SUBSCRIPTION' );
 				}
-				if ( P2Flux_WC_Auth_History::active( $fresh ) ) {
-					return true;
+
+				$active  = P2Flux_WC_Auth_History::active( $fresh );
+				$pending = P2Flux_WC_Auth_History::pending( $fresh );
+
+				/*
+				 * An active authorization is only ever replaced by a setup that says, by id, which one
+				 * it replaces - a re-authorization at new terms. Any other capability arriving while
+				 * one is active is the same customer's double-click on the signup, and nothing to do.
+				 */
+				if ( $active ) {
+					$replaces = $pending && isset( $pending['replaces_auth_id'] ) ? strtolower( (string) $pending['replaces_auth_id'] ) : '';
+					if ( '' === $replaces || $replaces !== strtolower( (string) $active['id'] ) ) {
+						return true;
+					}
 				}
 
-				$pending = P2Flux_WC_Auth_History::pending( $fresh );
 				if ( ! $pending ) {
 					return new WP_Error( 'SETUP_MISMATCH' );
 				}
@@ -90,6 +101,11 @@ class P2Flux_WC_Activation {
 					),
 					isset( $pending['replaces_auth_id'] ) ? $pending['replaces_auth_id'] : null
 				);
+
+				// What renewals are checked against from now on.
+				$fresh->update_meta_data( '_p2flux_units', (int) $terms['amount_units'] );
+				$fresh->update_meta_data( '_p2flux_period', (int) $terms['period'] );
+				$fresh->save();
 
 				P2Flux_WC_Collection::set( $fresh, P2Flux_WC_Collection::NORMAL, array( 'renewal_order_id' => $order->get_id() ) );
 

@@ -27,7 +27,7 @@ class P2Flux_WC_Account {
 	public static function init() {
 		add_action( 'woocommerce_subscription_details_after_subscription_table', array( __CLASS__, 'render' ) );
 
-		foreach ( array( 'restore', 'retry', 'revoke_session', 'revoked' ) as $endpoint ) {
+		foreach ( array( 'restore', 'retry', 'revoke_session', 'revoked', 'reauth', 'reauthorized' ) as $endpoint ) {
 			add_action( 'wc_ajax_p2flux_' . $endpoint, array( __CLASS__, $endpoint ) );
 		}
 	}
@@ -61,6 +61,8 @@ class P2Flux_WC_Account {
 					'checkout'     => P2Flux_WC_Client::checkout_url( isset( $authorization['environment'] ) ? $authorization['environment'] : P2Flux_WC_Client::current_environment() ),
 					'ajax'         => array(
 						'restore' => WC_AJAX::get_endpoint( 'p2flux_restore' ),
+						'reauth'  => WC_AJAX::get_endpoint( 'p2flux_reauth' ),
+						'reauthorized' => WC_AJAX::get_endpoint( 'p2flux_reauthorized' ),
 						'retry'   => WC_AJAX::get_endpoint( 'p2flux_retry' ),
 						'session' => WC_AJAX::get_endpoint( 'p2flux_revoke_session' ),
 						'revoked' => WC_AJAX::get_endpoint( 'p2flux_revoked' ),
@@ -69,6 +71,7 @@ class P2Flux_WC_Account {
 						'blocked'  => __( 'Your browser blocked the wallet window. Allow pop-ups for this site and try again.', 'p2flux-for-woocommerce' ),
 						'waiting'  => __( 'Waiting for your wallet…', 'p2flux-for-woocommerce' ),
 						'restored' => __( 'Approval restored. We will collect the outstanding payment shortly.', 'p2flux-for-woocommerce' ),
+						'reauthorized' => __( 'Thank you - the new terms are authorized.', 'p2flux-for-woocommerce' ),
 						'retrying' => __( 'Trying the payment again…', 'p2flux-for-woocommerce' ),
 						'revoked'  => __( 'Authorization revoked. This store can no longer collect from your wallet.', 'p2flux-for-woocommerce' ),
 						'failed'   => __( 'That did not work. Please try again.', 'p2flux-for-woocommerce' ),
@@ -86,6 +89,18 @@ class P2Flux_WC_Account {
 			echo '<p>' . esc_html__( 'A payment could not be collected. If you have topped up your wallet or restored the approval, you can try it again now.', 'p2flux-for-woocommerce' ) . '</p>';
 			echo '<p><button type="button" class="button" id="p2flux-restore">' . esc_html__( 'Restore USDC approval', 'p2flux-for-woocommerce' ) . '</button> ';
 			echo '<button type="button" class="button" id="p2flux-retry">' . esc_html__( 'Try the payment again', 'p2flux-for-woocommerce' ) . '</button></p>';
+		}
+
+		if ( P2Flux_WC_Collection::REAUTH_REQUIRED === $collection['state'] ) {
+			$units = P2Flux_WC_Money::to_units( $subscription->get_total(), '' !== (string) $subscription->get_meta( '_p2flux_rate' ) ? (string) $subscription->get_meta( '_p2flux_rate' ) : '1' );
+			echo '<p>' . esc_html(
+				sprintf(
+					/* translators: %s: amount in USDC. */
+					__( 'The terms of this subscription have changed, and your wallet has only authorized the old ones. To continue, authorize the new amount of %s USDC per period. Nothing is collected until you do.', 'p2flux-for-woocommerce' ),
+					null !== $units ? P2Flux_WC_Money::display( $units ) : $subscription->get_total()
+				)
+			) . '</p>';
+			echo '<p><button type="button" class="button" id="p2flux-reauth">' . esc_html__( 'Re-authorize', 'p2flux-for-woocommerce' ) . '</button></p>';
 		}
 
 		if ( in_array( $status, array( 'cancelled', 'pending-cancel', 'expired' ), true ) ) {
@@ -123,6 +138,122 @@ class P2Flux_WC_Account {
 		// The approve token can approve and nothing else: it cannot charge, revoke or refund. That
 		// is the whole reason it exists rather than reusing a cancellation session.
 		wp_send_json_success( array( 'token' => (string) $session['approve_token'] ) );
+	}
+
+	/**
+	 * A setup for the subscription's CURRENT terms, replacing the authorization the customer holds.
+	 *
+	 * The payout wallet and the environment are the subscription's own, stored when it was created -
+	 * never the store's current settings. The customer is authorizing the same arrangement at a new
+	 * price, not a different one.
+	 *
+	 * @return void
+	 */
+	public static function reauth() {
+		$subscription = self::authorized_subscription();
+		$collection   = P2Flux_WC_Collection::get( $subscription );
+		$active       = P2Flux_WC_Auth_History::active( $subscription );
+
+		if ( ! $active || P2Flux_WC_Collection::REAUTH_REQUIRED !== $collection['state'] ) {
+			wp_send_json_error( array( 'message' => __( 'This subscription does not need a new authorization.', 'p2flux-for-woocommerce' ) ), 400 );
+		}
+
+		$rate   = (string) $subscription->get_meta( '_p2flux_rate' );
+		$units  = P2Flux_WC_Money::to_units( $subscription->get_total(), '' !== $rate ? $rate : '1' );
+		$period = P2Flux_WC_Gateway::billing_period( $subscription );
+
+		if ( null === $units || null === $period || true !== P2Flux_WC_Money::check_bounds( $units, true ) ) {
+			wp_send_json_error( array( 'message' => __( 'These subscription terms cannot be authorized through P2Flux. Please contact the store.', 'p2flux-for-woocommerce' ) ), 400 );
+		}
+
+		$environment = (string) $subscription->get_meta( '_p2flux_env' );
+		$recipient   = strtolower( (string) $subscription->get_meta( '_p2flux_recipient' ) );
+		if ( '' === $environment || '' === $recipient ) {
+			$environment = $active['environment'];
+			$recipient   = strtolower( (string) $active['recipient'] );
+		}
+
+		// A setup already waiting for exactly these terms is reused: a second click is not a second setup.
+		$pending = P2Flux_WC_Auth_History::pending( $subscription );
+		if ( $pending && 'reauth' === $pending['purpose'] && (int) $pending['units'] === $units && (int) $pending['period'] === $period
+			&& strtolower( (string) $pending['replaces_auth_id'] ) === strtolower( (string) $active['id'] ) && (int) $pending['expires'] > time() + MINUTE_IN_SECONDS ) {
+			wp_send_json_success( array( 'token' => (string) $pending['setup_token'] ) );
+		}
+
+		try {
+			$setup = P2Flux_WC_Client::for_environment( $environment )->createSubscription(
+				array(
+					'recipient' => $recipient,
+					'amount'    => P2Flux_WC_Money::format( $units ),
+					'period'    => $period,
+				)
+			);
+		} catch ( \Exception $e ) {
+			P2Flux_WC_Logger::error( 'could not create a re-authorization setup', array( 'subscription' => $subscription->get_id(), 'error' => $e->getMessage() ) );
+			wp_send_json_error( array( 'message' => __( 'P2Flux could not be reached. Please try again shortly.', 'p2flux-for-woocommerce' ) ), 502 );
+		}
+
+		P2Flux_WC_Auth_History::set_pending(
+			$subscription,
+			array(
+				'purpose'          => 'reauth',
+				'setup_token'      => (string) $setup['setup_token'],
+				'salt'             => isset( $setup['salt'] ) ? (string) $setup['salt'] : '',
+				'expires'          => isset( $setup['expires_at'] ) ? (int) $setup['expires_at'] : time() + DAY_IN_SECONDS,
+				'units'            => $units,
+				'period'           => $period,
+				'recipient'        => $recipient,
+				'environment'      => $environment,
+				'order_id'         => (int) $collection['renewal_order_id'],
+				'replaces_auth_id' => (string) $active['id'],
+			)
+		);
+
+		wp_send_json_success( array( 'token' => (string) $setup['setup_token'] ) );
+	}
+
+	/**
+	 * The wallet signed the new terms: switch to the new authorization and collect what is owed.
+	 *
+	 * The capability in the request is a claim. Activation reads the subscription's terms from
+	 * P2Flux and refuses anything that is not the setup this subscription created.
+	 *
+	 * @return void
+	 */
+	public static function reauthorized() {
+		$subscription = self::authorized_subscription();
+		$capability   = isset( $_POST['subscription_capability'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription_capability'] ) ) : '';
+		$collection   = P2Flux_WC_Collection::get( $subscription );
+		$order_id     = (int) $collection['renewal_order_id'];
+		$order        = $order_id ? wc_get_order( $order_id ) : null;
+
+		if ( '' === $capability ) {
+			wp_send_json_error( array( 'message' => __( 'No authorization was returned.', 'p2flux-for-woocommerce' ) ), 400 );
+		}
+
+		$stored = P2Flux_WC_Activation::store( $subscription, $order ? $order : $subscription, $capability );
+		unset( $capability );
+
+		if ( is_wp_error( $stored ) ) {
+			wp_send_json_success( array( 'status' => 'failed', 'code' => $stored->get_error_code() ) );
+		}
+
+		if ( ! $order ) {
+			wp_send_json_success( array( 'status' => 'finalized', 'message' => __( 'Thank you - the new terms are authorized.', 'p2flux-for-woocommerce' ) ) );
+		}
+
+		$outcome = P2Flux_WC_Charger::collect( $subscription->get_id(), $order_id );
+
+		wp_send_json_success(
+			array(
+				'status'  => 'charged' === $outcome['status'] ? 'finalized' : $outcome['status'],
+				'code'    => $outcome['code'],
+				'tx_hash' => $outcome['tx_hash'],
+				'message' => 'charged' === $outcome['status']
+					? __( 'Thank you - the new terms are authorized and the outstanding payment went through.', 'p2flux-for-woocommerce' )
+					: $outcome['message'],
+			)
+		);
 	}
 
 	/**
