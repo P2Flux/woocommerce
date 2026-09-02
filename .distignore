@@ -1,0 +1,11 @@
+# Everything a merchant does not need, and everything wordpress.org should not review as shipped
+# code. The test fixture in dev/ is the important one: it can shorten billing periods, and it exists
+# only so a developer can watch two renewals in two minutes on Sepolia.
+.git
+.gitignore
+.distignore
+dev
+tests
+node_modules
+*.md
+!readme.txt
