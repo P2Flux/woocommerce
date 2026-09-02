@@ -35,6 +35,15 @@ the order a refund belongs to. `uninstall.php` keeps the table unless `P2FLUX_WC
 
 A row is not payment proof. It records who may be paid by a settlement, never that one happened.
 
+## The block checkout asks the cart
+
+`P2Flux_WC_Gateway::subscription_cart_supported()` reads the cart's items rather than
+`WC()->cart->recurring_carts`, because the latter is only filled once totals are calculated and the
+block checkout builds its payment-method list before that. The same answer is published on the Store
+API cart response as `extensions.p2flux.recurring` (registered in the plugin bootstrap, after the
+classes exist), and `assets/blocks.js` reads it in `canMakePayment`. A flag baked into the script's
+registration data cannot know what the shopper added afterwards; the cart can.
+
 ## `ALREADY_CHARGED` and `CONFIRMING` never pay an order
 
 `P2Flux_WC_Renewal::decide()` pays an order only for `CHARGED` with a transaction hash.
@@ -47,6 +56,27 @@ A row is not payment proof. It records who may be paid by a settlement, never th
   match is flagged (`_p2flux_recover_mismatch`) and never applied.
 - `CONFIRMING` is on chain but not settled. The order stays pending, nothing is emailed, and only
   reconciliation jobs run — never a second `/v1/charges` for that period.
+
+### The response names the period, not the clock
+
+The charger claims the period it derives from the clock, then sends the charge. The API's answer
+carries `period_index`, and that one is authoritative: it differs from the claim whenever an earlier
+charge is still settling (the API answers about *that* period) or the transaction crossed a period
+boundary in the mempool. `P2Flux_WC_Charger::reconcile()` moves the claim to the reported period
+before deciding anything; if that period belongs to another order the response is refused
+(`PERIOD_CONFLICT`, `_p2flux_period_conflict`) and nothing is recorded as payment. The clock-derived
+row stays claimed by the same order so a later charge can still use it.
+
+Found on staging: the first renewal after signup came back `CONFIRMING` about period 7 while the
+charger had claimed period 9, and recovery for period 9 correctly found nothing. The order stayed
+unpaid, which is the right outcome from a wrong attribution, but it would have stayed that way.
+
+### A pending subscription may take its first charge
+
+WooCommerce Subscriptions leaves a new subscription in `pending` until its parent order is paid, and
+paying that order is precisely the first charge. `P2Flux_WC_Collection::may_charge()` therefore
+allows `pending` alongside `active` and the renewal-time `on-hold`; `pending-cancel`, `expired` and
+`switched` remain refused.
 
 Both are pinned by `tests/integration.php`.
 

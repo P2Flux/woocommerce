@@ -78,8 +78,8 @@ it and cannot move it.
 = What happens if a customer closes the payment window? =
 
 Nothing is lost. The order keeps its payment instruction, the plugin checks whether the payment
-arrived, and the customer's own "Check payment" button asks the same question. It never offers to
-pay again while a payment might already exist.
+arrived, and the customer's own "I already paid - check my payment" link asks the same question. It
+never offers to pay again while a payment might already exist.
 
 = Can I refund? =
 
@@ -103,9 +103,11 @@ permission in the customer's wallet is theirs to remove, and their account page 
 = Do free trials work? =
 
 Not in this version. A subscription's first charge and its renewals are one signed amount with one
-start date, so a trial would need protocol support that does not exist yet. Sign-up fees and a first
-payment that differs from the recurring amount are unsupported for the same reason, and the gateway
-refuses those carts rather than selling a subscription it cannot renew.
+start date, so a trial would need protocol support that does not exist yet. Sign-up fees, a second
+subscription, or anything else in the cart alongside the subscription - all of which make the first
+payment differ from the renewals - are unsupported for the same reason. P2Flux is simply not offered
+for such a cart, rather than selling a subscription it cannot renew; the customer pays with another
+method, or removes the extra item.
 
 = Can I price subscriptions in euros? =
 
