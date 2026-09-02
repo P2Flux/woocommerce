@@ -656,3 +656,35 @@ function as_unschedule_all_actions( $hook, $args = array(), $group = '' ) {
 		)
 	);
 }
+
+$GLOBALS['p2flux_test_doing'] = array();
+
+/**
+ * @param string $hook Hook.
+ * @return bool
+ */
+function doing_action( $hook ) {
+	return in_array( $hook, $GLOBALS['p2flux_test_doing'], true );
+}
+
+/**
+ * @param string   $hook     Hook.
+ * @param callable $callback Callback.
+ * @param int      $priority Priority.
+ * @param int      $args     Args.
+ * @return void
+ */
+function add_action( $hook, $callback, $priority = 10, $args = 1 ) {
+	unset( $hook, $callback, $priority, $args );
+}
+
+/**
+ * @param string   $hook     Hook.
+ * @param callable $callback Callback.
+ * @param int      $priority Priority.
+ * @param int      $args     Args.
+ * @return void
+ */
+function add_filter( $hook, $callback, $priority = 10, $args = 1 ) {
+	unset( $hook, $callback, $priority, $args );
+}

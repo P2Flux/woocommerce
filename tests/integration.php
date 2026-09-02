@@ -24,6 +24,7 @@ require __DIR__ . '/../includes/class-p2flux-wc-auth-history.php';
 require __DIR__ . '/../includes/class-p2flux-wc-renewal.php';
 require __DIR__ . '/../includes/class-p2flux-wc-charger.php';
 require __DIR__ . '/../includes/class-p2flux-wc-jobs.php';
+require __DIR__ . '/../includes/class-p2flux-wc-lifecycle.php';
 
 $failures = 0;
 $checks   = 0;
@@ -314,6 +315,27 @@ P2Flux_WC_Charger::collect( $subscription->get_id(), $renewal->get_id() );
 
 check( 'no retry is queued for an invalid request', ! as_has_scheduled_action( P2Flux_WC_Jobs::RECHARGE, array( $renewal->get_id() ) ) );
 check( 'the renewal is failed for a human', 'failed' === $renewal->get_status() );
+
+echo "\nthe renewal on-hold is not a suspension\n";
+
+// WCS puts a subscription on hold at priority 1 of the parent hook, before the gateway hook fires. That
+// transition must not be read as a human suspending the subscription - it would drop the very renewal
+// being collected.
+list( $subscription, $renewal ) = scenario( 120, $AUTH );
+p2flux_test_reset_calls();
+P2Flux_WC_Jobs::schedule( 'recharge', $renewal->get_id(), 60 );
+$GLOBALS['p2flux_test_doing'] = array( 'woocommerce_scheduled_subscription_payment' );
+$subscription->set_status( 'on-hold' );
+P2Flux_WC_Lifecycle::on_hold( $subscription );
+$GLOBALS['p2flux_test_doing'] = array();
+
+check( 'the scheduled renewal on-hold leaves the collection state alone', P2Flux_WC_Collection::NORMAL === P2Flux_WC_Collection::get( $subscription )['state'] );
+check( 'and keeps the queued jobs', as_has_scheduled_action( P2Flux_WC_Jobs::RECHARGE, array( $renewal->get_id() ) ) );
+
+// The same transition outside a renewal request IS a suspension.
+P2Flux_WC_Lifecycle::on_hold( $subscription );
+check( 'an on-hold outside a renewal is a suspension', P2Flux_WC_Collection::SUSPENDED === P2Flux_WC_Collection::get( $subscription )['state'] );
+check( 'which drops the queued jobs', ! as_has_scheduled_action( P2Flux_WC_Jobs::RECHARGE, array( $renewal->get_id() ) ) );
 
 echo "\nnotes and logs never carry a capability\n";
 

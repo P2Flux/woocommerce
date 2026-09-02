@@ -76,6 +76,11 @@ mounts `dev/mu-plugins/`, which contains the short-period fixture described in t
 document — development only, Sepolia only, excluded from any package by `.distignore` and refused
 by the release check.
 
+Recurring behaviour is currently exercised against Automattic's public `woocommerce-subscriptions-core`
+v8.2.0 through `dev/tests/mu-plugins/p2flux-wcs-core-harness.php` (see `docs/architecture.md`). That is an
+interim target: the current commercial WooCommerce Subscriptions release still has to be validated before
+any public release.
+
 Faucets for Base Sepolia: [ETH](https://portal.cdp.coinbase.com/products/faucet) for gas,
 [USDC](https://faucet.circle.com) for payments.
 

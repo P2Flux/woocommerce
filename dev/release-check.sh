@@ -45,6 +45,9 @@ if [ -d "$tmp/p2flux-for-woocommerce" ]; then
   done < "$root/.distignore"
   grep -rl "p2flux-test-fixture\|P2FLUX_WC_DEV_SHORT_PERIODS" "$tmp/p2flux-for-woocommerce" 2>/dev/null | grep -v architecture.md | grep -q . && note "the release archive contains the development fixture"
   grep -rn "curl_" "$tmp/p2flux-for-woocommerce" --include='*.php' 2>/dev/null | grep -q . && note "the release archive calls curl"
+  # The WooCommerce Subscriptions Core test harness and the library it boots are development-only.
+  grep -rl "WC_Subscriptions_Core_Plugin\|wcs-core-harness\|P2FLUX_WCS_CORE_DIR" "$tmp/p2flux-for-woocommerce" 2>/dev/null | grep -v architecture.md | grep -q . && note "the release archive contains the WCS core test harness"
+  [ -d "$tmp/p2flux-for-woocommerce/dev" ] && note "the release archive contains dev/"
 fi
 rm -rf "$tmp"
 

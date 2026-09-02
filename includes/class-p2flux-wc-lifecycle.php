@@ -56,7 +56,13 @@ class P2Flux_WC_Lifecycle {
 		if ( ! empty( $GLOBALS['p2flux_wc_own_transition'] ) ) {
 			return;
 		}
-		if ( function_exists( 'doing_action' ) && doing_action( 'woocommerce_scheduled_subscription_payment_p2flux' ) ) {
+		/*
+		 * WCS's `prepare_renewal` sets on-hold at priority 1 of the PARENT hook, before the gateway-specific
+		 * hook (priority 10) exists at all - so the renewal's own on-hold arrives while only the parent
+		 * action is running. Checking the gateway hook alone would classify every scheduled renewal as a
+		 * suspension and drop its jobs.
+		 */
+		if ( self::in_scheduled_renewal() ) {
 			return;
 		}
 
@@ -146,6 +152,20 @@ class P2Flux_WC_Lifecycle {
 		$order->save();
 
 		return true;
+	}
+
+	/**
+	 * Are we inside WCS's scheduled-renewal request?
+	 *
+	 * @return bool
+	 */
+	public static function in_scheduled_renewal() {
+		if ( ! function_exists( 'doing_action' ) ) {
+			return false;
+		}
+
+		return doing_action( 'woocommerce_scheduled_subscription_payment' )
+			|| doing_action( 'woocommerce_scheduled_subscription_payment_p2flux' );
 	}
 
 	/**

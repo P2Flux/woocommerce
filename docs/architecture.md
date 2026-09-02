@@ -182,3 +182,16 @@ Sepolia. `P2Flux_WC_Gateway::billing_period()` honours the filter only in the **
 the API refuses periods under an hour anywhere but Base Sepolia. The fixture is excluded from any
 package by `.distignore`, and `dev/release-check.sh` fails the build if shipped code references it.
 It must never be documented as a merchant feature.
+
+## Recurring test target (interim)
+
+Development recurring E2E is currently validated against Automattic's public
+**woocommerce-subscriptions-core v8.2.0** (commit `442d585955ab048673c765a8afca680b1ea38e07`), booted on a
+controlled staging site by `dev/tests/mu-plugins/p2flux-wcs-core-harness.php`. The harness replicates three
+things the commercial plugin provides and the core library does not: the bridge that fires
+`woocommerce_scheduled_subscription_payment_{gateway}` after `prepare_renewal`, automatic (non-manual) renewal
+for gateways other than WooCommerce Payments, and re-adding such gateways to a subscription checkout. None of
+that touches the plugin.
+
+**Compatibility with the current commercial WooCommerce Subscriptions release must still be validated
+before public release.** Passing against the 8.2.0 core is not that validation.
