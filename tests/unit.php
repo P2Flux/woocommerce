@@ -84,6 +84,12 @@ check( 'text is not a price', null === P2Flux_WC_Money::to_units( 'free', '1' ) 
 check( 'formatting round-trips', '12.990000' === P2Flux_WC_Money::format( 12990000 ) );
 check( 'and pads the fraction', '0.010000' === P2Flux_WC_Money::format( 10000 ) );
 
+check( 'a whole amount reads as two decimals', '1.00' === P2Flux_WC_Money::display( 1000000 ) );
+check( 'a cent still reads as two', '0.01' === P2Flux_WC_Money::display( 10000 ) );
+check( 'real precision is never hidden', '14.119565' === P2Flux_WC_Money::display( 14119565 ) );
+check( 'and trailing zeros beyond two are dropped', '2.50' === P2Flux_WC_Money::display( 2500000 ) );
+check( 'the wire format is untouched', '1.000000' === P2Flux_WC_Money::format( 1000000 ) );
+
 check( 'a penny is too small for a subscription', 'too_small' === P2Flux_WC_Money::check_bounds( 10000, true ) );
 check( 'but fine for a one-off', true === P2Flux_WC_Money::check_bounds( 10000, false ) );
 check( 'the ceiling is enforced', 'too_large' === P2Flux_WC_Money::check_bounds( 10000000001, false ) );

@@ -38,11 +38,14 @@ grep -q "v0.6.0" "$root/includes/vendor/p2flux/VENDORED.md" || note "vendored SD
 tmp="$(mktemp -d)"
 ( cd "$root" && git archive --format=tar --prefix=p2flux-for-woocommerce/ HEAD | tar -x -C "$tmp" ) 2>/dev/null
 if [ -d "$tmp/p2flux-for-woocommerce" ]; then
-  # .distignore is what `wp dist-archive` honours; apply it the same way.
-  while IFS= read -r pattern; do
-    case "$pattern" in ''|\#*|!*) continue;; esac
-    rm -rf "$tmp/p2flux-for-woocommerce/$pattern"
-  done < "$root/.distignore"
+  # .distignore is what `wp dist-archive` honours; apply it the same way - unquoted so a glob like
+  # `*.md` expands, which is the difference between checking the real package and checking a copy
+  # that still carries the developer documentation.
+  ( cd "$tmp/p2flux-for-woocommerce" || exit 0
+    while IFS= read -r pattern; do
+      case "$pattern" in ''|\#*|!*) continue;; esac
+      rm -rf $pattern
+    done < "$root/.distignore" )
   grep -rl "p2flux-test-fixture\|P2FLUX_WC_DEV_SHORT_PERIODS" "$tmp/p2flux-for-woocommerce" 2>/dev/null | grep -v architecture.md | grep -q . && note "the release archive contains the development fixture"
   grep -rn "curl_" "$tmp/p2flux-for-woocommerce" --include='*.php' 2>/dev/null | grep -q . && note "the release archive calls curl"
   # The WooCommerce Subscriptions Core test harness and the library it boots are development-only.

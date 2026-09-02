@@ -136,6 +136,24 @@ class P2Flux_WC_Money {
 	}
 
 	/**
+	 * The same amount, written the way a person reads it.
+	 *
+	 * `format()` is the wire format and always carries six decimals, because that is what the API
+	 * parses. On a page that is noise: nobody wants to read "1.000000 USDC" for a dollar. This keeps
+	 * two decimals as the floor and only shows more when the amount genuinely has more, so a
+	 * converted price like 14.119565 is never quietly rounded away in front of the customer.
+	 *
+	 * @param int $units Micro-USDC.
+	 * @return string
+	 */
+	public static function display( $units ) {
+		$parts    = explode( '.', self::format( $units ), 2 );
+		$fraction = isset( $parts[1] ) ? rtrim( $parts[1], '0' ) : '';
+
+		return $parts[0] . '.' . str_pad( $fraction, 2, '0' );
+	}
+
+	/**
 	 * Convert a store-currency amount to micro-USDC at a given rate.
 	 *
 	 * `$rate` is how many units of the store's currency one USDC costs, as a decimal string - so USD

@@ -35,6 +35,12 @@ class P2Flux_WC_Checkout_Page {
 			return;
 		}
 
+		wp_enqueue_style(
+			'p2flux-wc-checkout',
+			plugins_url( 'assets/checkout.css', P2FLUX_WC_FILE ),
+			array(),
+			P2FLUX_WC_VERSION
+		);
 		wp_enqueue_script(
 			'p2flux-wc-checkout',
 			plugins_url( 'assets/checkout.js', P2FLUX_WC_FILE ),
@@ -52,40 +58,71 @@ class P2Flux_WC_Checkout_Page {
 		$units       = (int) $order->get_meta( '_p2flux_units' );
 		$rate        = (string) $order->get_meta( '_p2flux_rate' );
 
-		echo '<div class="p2flux-pay">';
+		?>
+		<div class="p2flux-pay">
+			<div class="p2flux-pay__head">
+				<img src="<?php echo esc_url( plugins_url( 'assets/p2flux-mark.svg', P2FLUX_WC_FILE ) ); ?>" alt="" width="26" height="26" />
+				<span class="p2flux-pay__name">P2Flux</span>
+				<?php if ( P2Flux_WC_Client::TEST === $environment ) : ?>
+					<span class="p2flux-pay__badge"><?php esc_html_e( 'Test mode', 'p2flux-for-woocommerce' ); ?></span>
+				<?php endif; ?>
+			</div>
 
-		echo '<p>' . esc_html(
-			sprintf(
-				/* translators: 1: amount in USDC. */
-				__( 'Amount to pay: %s USDC', 'p2flux-for-woocommerce' ),
-				P2Flux_WC_Money::format( $units )
-			)
-		) . '</p>';
+			<p class="p2flux-pay__amount">
+				<?php echo esc_html( P2Flux_WC_Money::display( $units ) ); ?><span>USDC</span>
+			</p>
 
-		if ( '' !== $rate && '1' !== $rate ) {
-			echo '<p class="p2flux-rate">' . esc_html(
-				sprintf(
-					/* translators: 1: exchange rate, 2: store currency code. */
-					__( 'Converted at 1 USDC = %1$s %2$s.', 'p2flux-for-woocommerce' ),
-					$rate,
-					get_woocommerce_currency()
-				)
-			) . '</p>';
-		}
+			<?php if ( '' !== $rate && '1' !== $rate ) : ?>
+				<p class="p2flux-pay__meta">
+					<?php
+					echo esc_html(
+						sprintf(
+							/* translators: 1: exchange rate, 2: store currency code. */
+							__( 'Converted at 1 USDC = %1$s %2$s.', 'p2flux-for-woocommerce' ),
+							$rate,
+							get_woocommerce_currency()
+						)
+					);
+					?>
+				</p>
+			<?php endif; ?>
 
-		if ( P2Flux_WC_Client::TEST === $environment ) {
-			echo '<p class="p2flux-testmode"><strong>' . esc_html__( 'Test mode: this payment settles on Base Sepolia and moves no real money.', 'p2flux-for-woocommerce' ) . '</strong></p>';
-		}
+			<p class="p2flux-pay__meta">
+				<?php
+				echo esc_html(
+					'subscribe' === $config['mode']
+						? __( 'One wallet signature sets this up. Your wallet is not asked again for renewals.', 'p2flux-for-woocommerce' )
+						: __( 'Paid from your own wallet on Base. The money goes straight to the store.', 'p2flux-for-woocommerce' )
+				);
+				?>
+			</p>
 
-		echo '<p><button type="button" class="button alt" id="p2flux-pay">' . esc_html(
-			$subscription
-				? __( 'Authorize with your wallet', 'p2flux-for-woocommerce' )
-				: __( 'Pay with your wallet', 'p2flux-for-woocommerce' )
-		) . '</button></p>';
+			<div class="p2flux-pay__actions">
+				<button type="button" class="button alt p2flux-pay__primary" id="p2flux-pay">
+					<?php
+					echo esc_html(
+						'subscribe' === $config['mode']
+							? __( 'Authorize with your wallet', 'p2flux-for-woocommerce' )
+							: __( 'Pay with your wallet', 'p2flux-for-woocommerce' )
+					);
+					?>
+				</button>
 
-		echo '<p id="p2flux-status" class="p2flux-status" role="status" aria-live="polite"></p>';
-		echo '<p><button type="button" class="button" id="p2flux-check" hidden>' . esc_html__( 'Check payment', 'p2flux-for-woocommerce' ) . '</button></p>';
-		echo '</div>';
+				<?php /* Shown only once a payment may already exist. Never a second way to pay. */ ?>
+				<button type="button" class="p2flux-pay__secondary" id="p2flux-check" hidden>
+					<?php esc_html_e( 'I already paid — check my payment', 'p2flux-for-woocommerce' ); ?>
+				</button>
+			</div>
+
+			<p class="p2flux-pay__status" id="p2flux-status" role="status" aria-live="polite"></p>
+
+			<?php if ( P2Flux_WC_Client::TEST === $environment ) : ?>
+				<p class="p2flux-pay__note">
+					<?php esc_html_e( 'Test mode: this payment settles on Base Sepolia and moves no real money.', 'p2flux-for-woocommerce' ); ?>
+				</p>
+			<?php endif; ?>
+		</div>
+		<?php
 	}
 
 	/**
@@ -183,16 +220,18 @@ class P2Flux_WC_Checkout_Page {
 			),
 			'redirect' => $order->get_checkout_order_received_url(),
 			'i18n'     => array(
-				'opening'     => __( 'Opening your wallet…', 'p2flux-for-woocommerce' ),
-				'blocked'     => __( 'Your browser blocked the payment window. Allow pop-ups for this site and try again.', 'p2flux-for-woocommerce' ),
-				'verifying'   => __( 'Confirming your payment on chain…', 'p2flux-for-woocommerce' ),
-				'confirming'  => __( 'Your payment is on chain and confirming. This page will update itself.', 'p2flux-for-woocommerce' ),
-				'collecting'  => __( 'Collecting the first payment…', 'p2flux-for-woocommerce' ),
-				'closed'      => __( 'The payment window closed. If you paid, use “Check payment” — do not pay twice.', 'p2flux-for-woocommerce' ),
-				'checking'    => __( 'Checking whether your payment arrived…', 'p2flux-for-woocommerce' ),
-				'notFound'    => __( 'No payment has arrived yet. If you have just paid, wait a moment and check again.', 'p2flux-for-woocommerce' ),
-				'failed'      => __( 'The payment could not be completed.', 'p2flux-for-woocommerce' ),
-				'retry'       => __( 'Something went wrong. Please try again.', 'p2flux-for-woocommerce' ),
+				'opening'    => __( 'Your wallet is opening in a new window. Confirm the payment there.', 'p2flux-for-woocommerce' ),
+				'blocked'    => __( 'Your browser blocked the wallet window. Allow pop-ups for this site, then try again.', 'p2flux-for-woocommerce' ),
+				'verifying'  => __( 'Confirming your payment on the blockchain. This takes a few seconds.', 'p2flux-for-woocommerce' ),
+				/* Deliberately reads as good news: the money HAS moved, and a customer told
+				 * "confirming" in a warning tone starts looking for a way to pay again. */
+				'confirming' => __( 'Your payment has been sent and is being confirmed. This page updates itself — no need to pay again.', 'p2flux-for-woocommerce' ),
+				'collecting' => __( 'Setting up your subscription and taking the first payment…', 'p2flux-for-woocommerce' ),
+				'closed'     => __( 'The wallet window closed. If you confirmed the payment, use the link below — do not pay a second time.', 'p2flux-for-woocommerce' ),
+				'checking'   => __( 'Looking for your payment on the blockchain…', 'p2flux-for-woocommerce' ),
+				'notFound'   => __( 'No payment has arrived yet. If you have just confirmed one, wait a moment and check again.', 'p2flux-for-woocommerce' ),
+				'failed'     => __( 'That payment could not be completed. Nothing was taken from your wallet.', 'p2flux-for-woocommerce' ),
+				'retry'      => __( 'We could not reach the payment service just now. Your payment, if you made one, is safe — check again in a moment.', 'p2flux-for-woocommerce' ),
 			),
 		);
 	}

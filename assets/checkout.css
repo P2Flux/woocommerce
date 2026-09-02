@@ -1,0 +1,222 @@
+/*
+ * The pay screen.
+ *
+ * It sits inside whatever theme the merchant runs, so everything is scoped under .p2flux-pay and
+ * nothing inherits a theme's button colours by accident. Deliberately plain: a card, the amount, one
+ * primary action, and a status line that speaks. The secondary action only exists once a payment may
+ * already have been sent - two buttons offered at the same time is how somebody pays twice.
+ */
+.p2flux-pay {
+	--p2flux-ink: #0c1224;
+	--p2flux-muted: #4a5063;
+	--p2flux-line: #e6e9f0;
+	--p2flux-brand: #4636e3;
+
+	max-width: 30rem;
+	margin: 1.5rem 0;
+	padding: 1.5rem;
+	border: 1px solid var(--p2flux-line);
+	border-radius: 12px;
+	background: #fff;
+	color: var(--p2flux-ink);
+	font-size: 15px;
+	line-height: 1.6;
+}
+
+.p2flux-pay__head {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	margin: 0 0 1.25rem;
+}
+
+.p2flux-pay__head img {
+	width: 26px;
+	height: 26px;
+}
+
+.p2flux-pay__name {
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.p2flux-pay__badge {
+	margin-left: auto;
+	padding: 0.15rem 0.5rem;
+	border: 1px solid var(--p2flux-line);
+	border-radius: 999px;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--p2flux-muted);
+}
+
+.p2flux-pay__amount {
+	margin: 0;
+	font-size: 30px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+
+.p2flux-pay__amount span {
+	font-size: 15px;
+	font-weight: 500;
+	color: var(--p2flux-muted);
+	margin-left: 0.35rem;
+}
+
+.p2flux-pay__meta {
+	margin: 0.35rem 0 0;
+	font-size: 13.5px;
+	color: var(--p2flux-muted);
+}
+
+.p2flux-pay__actions {
+	margin: 1.25rem 0 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+}
+
+/*
+ * The button is drawn here rather than inherited.
+ *
+ * A theme's `.button` can be anything - block themes often ship one with no padding at all - and the
+ * one control that asks somebody to move money should not look different on every shop.
+ */
+.p2flux-pay .p2flux-pay__primary,
+.p2flux-pay .button.p2flux-pay__primary {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	width: auto;
+	align-self: flex-start;
+	min-height: 48px;
+	padding: 0.85rem 1.6rem;
+	border: 0;
+	border-radius: 10px;
+	background: var(--p2flux-brand);
+	color: #fff;
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.2;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color 0.15s ease, transform 0.05s ease;
+}
+
+.p2flux-pay .p2flux-pay__primary:hover,
+.p2flux-pay .button.p2flux-pay__primary:hover {
+	background: #3a2cc4;
+	color: #fff;
+}
+
+.p2flux-pay .p2flux-pay__primary:active {
+	transform: translateY(1px);
+}
+
+.p2flux-pay .p2flux-pay__primary:focus-visible {
+	outline: 2px solid var(--p2flux-brand);
+	outline-offset: 3px;
+}
+
+.p2flux-pay .p2flux-pay__primary[disabled] {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.p2flux-pay .p2flux-pay__primary[hidden] {
+	display: none;
+}
+
+@media (max-width: 480px) {
+	.p2flux-pay .p2flux-pay__primary {
+		width: 100%;
+		align-self: stretch;
+	}
+}
+
+/*
+ * The secondary action is a link, not a second button: after a payment may already have moved, the
+ * one thing it must not look like is another way to pay.
+ */
+.p2flux-pay__secondary {
+	appearance: none;
+	background: none;
+	border: 0;
+	padding: 0;
+	font: inherit;
+	color: var(--p2flux-brand);
+	text-decoration: underline;
+	cursor: pointer;
+	align-self: flex-start;
+}
+
+.p2flux-pay__secondary[hidden] {
+	display: none;
+}
+
+.p2flux-pay__status {
+	margin: 1rem 0 0;
+	padding: 0.75rem 0.9rem;
+	border-radius: 8px;
+	background: #f7f9fc;
+	font-size: 14px;
+	color: var(--p2flux-muted);
+}
+
+.p2flux-pay__status:empty {
+	display: none;
+}
+
+.p2flux-pay__status--busy {
+	background: #f5f3ff;
+	color: #3b2fb8;
+}
+
+.p2flux-pay__status--warn {
+	background: #fff8ec;
+	color: #8a5a00;
+}
+
+.p2flux-pay__status--bad {
+	background: #fdf3f3;
+	color: #9b2c2c;
+}
+
+.p2flux-pay__note {
+	margin: 1rem 0 0;
+	font-size: 12.5px;
+	color: var(--p2flux-muted);
+}
+
+/* The payment method row in the block and classic checkouts. */
+.p2flux-method {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-weight: 500;
+}
+
+.p2flux-method img {
+	width: 22px;
+	height: 22px;
+}
+
+.p2flux-method__badge {
+	padding: 0.1rem 0.45rem;
+	border: 1px solid #e6e9f0;
+	border-radius: 999px;
+	font-size: 10.5px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #4a5063;
+}
+
+.p2flux-method__note {
+	margin: 0.4rem 0 0;
+	font-size: 13.5px;
+	line-height: 1.55;
+	color: #4a5063;
+}

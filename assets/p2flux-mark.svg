@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="P2Flux">
+  <path d="M4 16h8" stroke="#0C1224" stroke-width="3" stroke-linecap="round"/>
+  <path d="M12 16l6-6h7" stroke="#0C1224" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12 16l6 6h5.5" stroke="#0C1224" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="28.8" cy="10" r="2.4" fill="#4636E3"/>
+</svg>

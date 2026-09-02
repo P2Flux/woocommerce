@@ -70,7 +70,7 @@ class P2Flux_WC_Admin {
 		echo '</p>';
 
 		if ( $units > 0 ) {
-			echo '<p><strong>' . esc_html__( 'Paid', 'p2flux-for-woocommerce' ) . ':</strong> ' . esc_html( P2Flux_WC_Money::format( $units ) ) . ' USDC</p>';
+			echo '<p><strong>' . esc_html__( 'Paid', 'p2flux-for-woocommerce' ) . ':</strong> ' . esc_html( P2Flux_WC_Money::display( $units ) ) . ' USDC</p>';
 		}
 
 		if ( '' !== $hash ) {

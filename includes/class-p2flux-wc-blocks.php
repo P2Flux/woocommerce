@@ -54,6 +54,12 @@ final class P2Flux_WC_Blocks extends AbstractPaymentMethodType {
 	 * @return array<int,string>
 	 */
 	public function get_payment_method_script_handles() {
+		wp_enqueue_style(
+			'p2flux-wc-checkout',
+			plugins_url( 'assets/checkout.css', P2FLUX_WC_FILE ),
+			array(),
+			P2FLUX_WC_VERSION
+		);
 		wp_register_script(
 			'p2flux-wc-blocks',
 			plugins_url( 'assets/blocks.js', P2FLUX_WC_FILE ),
@@ -76,6 +82,9 @@ final class P2Flux_WC_Blocks extends AbstractPaymentMethodType {
 		return array(
 			'title'       => $gateway ? $gateway->get_option( 'title' ) : __( 'Pay with USDC', 'p2flux-for-woocommerce' ),
 			'description' => $gateway ? $gateway->get_option( 'description' ) : '',
+			// The block checkout ignores the classic gateway icon, so the mark is handed to the script
+			// and drawn in the label there.
+			'icon'        => plugins_url( 'assets/p2flux-mark.svg', P2FLUX_WC_FILE ),
 			'supports'    => $this->get_supported_features(),
 			'available'   => $this->is_active(),
 			// Whether a cart carrying a subscription may use this method. The block checkout asks

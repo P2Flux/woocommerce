@@ -23,9 +23,33 @@
 	var popup = null;
 	var settled = false;
 
-	function say( text ) {
-		if ( statusLine ) {
-			statusLine.textContent = text;
+	/**
+	 * The status line is the only thing that talks.
+	 *
+	 * `tone` is 'busy' | 'warn' | 'bad' | '' and only changes how it reads - what it says is the whole
+	 * message. A blank message hides the line rather than leaving an empty box on the page.
+	 */
+	function say( text, tone ) {
+		if ( ! statusLine ) {
+			return;
+		}
+		statusLine.textContent = text || '';
+		statusLine.className = 'p2flux-pay__status' + ( tone ? ' p2flux-pay__status--' + tone : '' );
+	}
+
+	/**
+	 * Once a payment may exist, the primary button stops being an option.
+	 *
+	 * Leaving "Pay with your wallet" enabled next to "check my payment" is how somebody pays twice: the
+	 * first is the familiar shape, and the customer has no way to know the money already left.
+	 */
+	function paymentMayExist() {
+		if ( button ) {
+			button.disabled = true;
+			button.hidden = true;
+		}
+		if ( check ) {
+			check.hidden = false;
 		}
 	}
 
@@ -58,7 +82,7 @@
 	 * about that same transaction, and never suggests paying again.
 	 */
 	function verify( txHash, receipt ) {
-		say( config.i18n.verifying );
+		say( config.i18n.verifying, 'busy' );
 
 		post( config.ajax.verify, { tx_hash: txHash, settlement_receipt: receipt || '' } )
 			.then( function ( response ) {
@@ -69,18 +93,19 @@
 					return;
 				}
 				if ( 'confirming' === result.status ) {
-					say( config.i18n.confirming );
+					say( config.i18n.confirming, 'busy' );
+					paymentMayExist();
 					window.setTimeout( function () {
 						verify( txHash, '' );
 					}, 5000 );
 					return;
 				}
 
-				say( config.i18n.failed );
+				say( config.i18n.failed, 'bad' );
 				offerCheck();
 			} )
 			.catch( function () {
-				say( config.i18n.retry );
+				say( config.i18n.retry, 'warn' );
 				offerCheck();
 			} );
 	}
@@ -94,7 +119,7 @@
 	 * broken.
 	 */
 	function activate( capability ) {
-		say( config.i18n.collecting );
+		say( config.i18n.collecting, 'busy' );
 
 		post( config.ajax.activate, capability ? { subscription: capability } : {} )
 			.then( function ( response ) {
@@ -106,7 +131,7 @@
 					return;
 				}
 				if ( 'confirming' === result.status || 'pending' === result.status ) {
-					say( config.i18n.confirming );
+					say( config.i18n.confirming, 'busy' );
 					window.setTimeout( function () {
 						activate( '' );
 					}, 5000 );
@@ -116,10 +141,10 @@
 				// A bare code. The checkout window composes the sentence the customer reads; a
 				// merchant page names a failure but never writes on that screen.
 				tell( { type: 'p2flux.activation_failed', code: result.code } );
-				say( config.i18n.failed );
+				say( config.i18n.failed, 'bad' );
 			} )
 			.catch( function () {
-				say( config.i18n.retry );
+				say( config.i18n.retry, 'warn' );
 				window.setTimeout( function () {
 					activate( '' );
 				}, 15000 );
@@ -133,9 +158,7 @@
 	}
 
 	function offerCheck() {
-		if ( check ) {
-			check.hidden = false;
-		}
+		paymentMayExist();
 	}
 
 	function onMessage( event ) {
@@ -177,7 +200,7 @@
 			}
 			if ( popup && popup.closed ) {
 				window.clearInterval( timer );
-				say( config.i18n.closed );
+				say( config.i18n.closed, 'warn' );
 				offerCheck();
 			}
 		}, 1000 );
@@ -198,11 +221,11 @@
 			);
 
 			if ( ! popup ) {
-				say( config.i18n.blocked );
+				say( config.i18n.blocked, 'bad' );
 				return;
 			}
 
-			say( config.i18n.opening );
+			say( config.i18n.opening, 'busy' );
 			watchPopup();
 		} );
 	}
@@ -210,7 +233,7 @@
 	if ( check ) {
 		check.addEventListener( 'click', function () {
 			check.disabled = true;
-			say( config.i18n.checking );
+			say( config.i18n.checking, 'busy' );
 
 			post( config.ajax.check, {} )
 				.then( function ( response ) {
@@ -221,11 +244,14 @@
 						return;
 					}
 
-					say( 'confirming' === result.status ? config.i18n.confirming : config.i18n.notFound );
+					say(
+						'confirming' === result.status ? config.i18n.confirming : config.i18n.notFound,
+						'confirming' === result.status ? 'busy' : 'warn'
+					);
 					check.disabled = false;
 				} )
 				.catch( function () {
-					say( config.i18n.retry );
+					say( config.i18n.retry, 'warn' );
 					check.disabled = false;
 				} );
 		} );

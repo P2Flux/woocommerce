@@ -23,6 +23,9 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 	 */
 	public function __construct() {
 		$this->id                 = 'p2flux';
+		/* The brand mark, so the method is recognisable in a list of payment options rather than being
+		 * the one line of plain text among logos. WooCommerce prints it beside the title. */
+		$this->icon               = plugins_url( 'assets/p2flux-mark.svg', P2FLUX_WC_FILE );
 		$this->method_title       = __( 'P2Flux', 'p2flux-for-woocommerce' );
 		$this->method_description = __( 'Accept USDC on Base directly to your own wallet. Non-custodial: payments go from the customer’s wallet to yours, and P2Flux never holds your money.', 'p2flux-for-woocommerce' );
 		$this->has_fields         = false;
@@ -230,6 +233,32 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 		}
 
 		return true;
+	}
+
+	/**
+	 * What the customer reads at checkout, under the method's own name.
+	 *
+	 * The configured description, plus the two things a first-time buyer needs to know and cannot
+	 * guess: that a wallet window opens after placing the order, and - in test mode - that this is
+	 * not real money.
+	 *
+	 * @return string
+	 */
+	public function get_description() {
+		$description = (string) $this->get_option( 'description' );
+		$lines       = array();
+
+		if ( '' !== trim( $description ) ) {
+			$lines[] = wp_kses_post( wpautop( wptexturize( $description ) ) );
+		}
+
+		$lines[] = '<p class="p2flux-method__note">' . esc_html__( 'After placing the order you will be asked to confirm the payment in your own wallet.', 'p2flux-for-woocommerce' ) . '</p>';
+
+		if ( P2Flux_WC_Client::TEST === P2Flux_WC_Client::current_environment() ) {
+			$lines[] = '<p class="p2flux-method__note"><strong>' . esc_html__( 'Test mode: settles on Base Sepolia and moves no real money.', 'p2flux-for-woocommerce' ) . '</strong></p>';
+		}
+
+		return implode( '', $lines );
 	}
 
 	/**
