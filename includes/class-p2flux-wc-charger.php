@@ -278,6 +278,11 @@ class P2Flux_WC_Charger {
 			$order->update_meta_data( '_p2flux_auth_id', $authorization['id'] );
 			$order->update_meta_data( '_p2flux_period_index', $period );
 			$order->add_order_note( $decision['note'] );
+			// A retry after a failure that is now confirming is no longer failed: the customer paid,
+			// and "Failed" next to money that has moved is the wrong word for it.
+			if ( 'failed' === $order->get_status() ) {
+				$order->set_status( 'pending' );
+			}
 			$order->save();
 
 			if ( $still_ours ) {
