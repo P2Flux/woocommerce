@@ -199,6 +199,12 @@ check( 'a suspended subscription may NEVER be charged', true !== P2Flux_WC_Colle
 check( 'nor a cancelled one', true !== P2Flux_WC_Collection::may_charge( 'cancelled', $normal ) );
 check( 'nor one awaiting re-authorization', true !== P2Flux_WC_Collection::may_charge( 'on-hold', array( 'state' => P2Flux_WC_Collection::REAUTH_REQUIRED, 'renewal_order_id' => 0 ) ) );
 
+// A subscription awaiting its first payment is pending, and that first payment is the charge being
+// asked about. Refusing it makes every signup fail with an authorization the customer just signed.
+check( 'a pending subscription may take its first charge', true === P2Flux_WC_Collection::may_charge( 'pending', $normal ) );
+check( 'but not once it is on its way out', true !== P2Flux_WC_Collection::may_charge( 'pending-cancel', $normal ) );
+check( 'nor once expired', true !== P2Flux_WC_Collection::may_charge( 'expired', $normal ) );
+
 check( 'a dunning retry may collect its own renewal', true === P2Flux_WC_Collection::may_charge( 'on-hold', $dunning, 55 ) );
 check( 'but not a different one', true !== P2Flux_WC_Collection::may_charge( 'on-hold', $dunning, 77 ) );
 

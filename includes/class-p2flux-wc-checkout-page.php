@@ -98,7 +98,9 @@ class P2Flux_WC_Checkout_Page {
 			</p>
 
 			<div class="p2flux-pay__actions">
-				<button type="button" class="button alt p2flux-pay__primary" id="p2flux-pay">
+				<?php /* Disabled until the script binds it: a button that swallows the first click is
+					worse than one that is visibly not ready yet. */ ?>
+				<button type="button" class="button alt p2flux-pay__primary" id="p2flux-pay" disabled aria-disabled="true">
 					<?php
 					echo esc_html(
 						'subscribe' === $config['mode']

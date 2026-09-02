@@ -207,6 +207,11 @@
 	}
 
 	if ( button ) {
+		// The markup ships it disabled, so a click that lands before this file has loaded cannot be
+		// swallowed silently. From here on it is a real button.
+		button.disabled = false;
+		button.removeAttribute( 'aria-disabled' );
+
 		button.addEventListener( 'click', function () {
 			// Opened straight from the click: a window opened later, from a callback, is blocked.
 			if ( 'collect' === config.mode ) {

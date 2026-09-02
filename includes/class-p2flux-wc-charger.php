@@ -190,6 +190,52 @@ class P2Flux_WC_Charger {
 			return self::refused( 'GONE', 'The subscription or order no longer exists.' );
 		}
 
+		/*
+		 * The response names the period it is talking about, and that is authoritative. The claim was
+		 * made against the period derived from the clock a moment earlier, which can differ: a charge
+		 * that crossed a period boundary, or - as happens whenever an earlier charge is still settling
+		 * - an answer about that earlier period rather than this one. Paying an order against a period
+		 * it does not own is the one outcome worth this much care.
+		 */
+		$reported = isset( $result->periodIndex ) && null !== $result->periodIndex ? (int) $result->periodIndex : null;
+		if ( null !== $reported && $reported !== (int) $period ) {
+			$moved = P2Flux_WC_Periods::claim(
+				array(
+					'auth_id'         => $authorization['id'],
+					'period_index'    => $reported,
+					'subscription_id' => $subscription_id,
+					'order_id'        => $order_id,
+					'units'           => isset( $authorization['units'] ) ? (int) $authorization['units'] : 0,
+					'environment'     => isset( $authorization['environment'] ) ? $authorization['environment'] : '',
+				)
+			);
+
+			if ( false === $moved ) {
+				// Another Woo order owns the period this settlement belongs to. Record nothing about
+				// payment; a person decides which order the money was for.
+				P2Flux_WC_Logger::error(
+					'the charge answered about a period another order owns',
+					array( 'order' => $order_id, 'claimed' => (int) $period, 'reported' => $reported )
+				);
+				$order->update_meta_data( '_p2flux_period_conflict', $reported );
+				$order->add_order_note(
+					sprintf(
+						/* translators: 1: billing period index. */
+						__( 'P2Flux answered about billing period %d, which belongs to another order. Nothing was recorded; please review both orders.', 'p2flux-for-woocommerce' ),
+						$reported
+					)
+				);
+				$order->save();
+
+				return self::refused( 'PERIOD_CONFLICT', 'That billing period belongs to another order.' );
+			}
+
+			// The period we claimed a moment ago was never collected by this attempt; leave it claimed
+			// for this order so a later charge can still use it, and follow the settlement instead.
+			P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CLAIMED );
+			$period = $reported;
+		}
+
 		$decision = P2Flux_WC_Renewal::decide( $result, P2Flux_WC_Collection::get( $subscription )['attempts'] );
 		$hash     = isset( $result->txHash ) ? (string) $result->txHash : '';
 		$proven   = 'paid' === $decision['outcome'] && '' !== $hash;

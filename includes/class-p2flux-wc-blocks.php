@@ -15,6 +15,7 @@
 defined( 'ABSPATH' ) || exit;
 
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
+use Automattic\WooCommerce\StoreApi\Schemas\V1\CartSchema;
 
 /**
  * Block checkout integration.
@@ -35,6 +36,53 @@ final class P2Flux_WC_Blocks extends AbstractPaymentMethodType {
 	 */
 	public function initialize() {
 		$this->settings = get_option( 'woocommerce_p2flux_settings', array() );
+	}
+
+	/**
+	 * Tell the block checkout, per cart, whether this cart's subscription can be honoured.
+	 *
+	 * The data handed to the script when it is registered is fixed for the whole page load, but
+	 * whether a subscription is supported is a question about the CART: a subscription alongside a
+	 * one-off product makes the first payment differ from the renewals, and one authorization
+	 * carries a single amount. So the answer travels with the cart, and the script reads it there.
+	 *
+	 * @return void
+	 */
+	public static function register_cart_data() {
+		if ( ! function_exists( 'woocommerce_store_api_register_endpoint_data' ) || ! class_exists( CartSchema::class ) ) {
+			return;
+		}
+
+		woocommerce_store_api_register_endpoint_data(
+			array(
+				'endpoint'        => CartSchema::IDENTIFIER,
+				'namespace'       => 'p2flux',
+				'data_callback'   => static function () {
+					$gateways = WC()->payment_gateways() ? WC()->payment_gateways()->payment_gateways() : array();
+					$gateway  = isset( $gateways['p2flux'] ) ? $gateways['p2flux'] : null;
+					$reason   = $gateway ? $gateway->subscription_cart_supported() : 'unavailable';
+
+					return array(
+						'recurring' => true === $reason,
+						'reason'    => true === $reason ? '' : (string) $reason,
+					);
+				},
+				'schema_callback' => static function () {
+					return array(
+						'recurring' => array(
+							'description' => __( 'Whether this cart’s subscription can be paid with P2Flux.', 'p2flux-for-woocommerce' ),
+							'type'        => 'boolean',
+							'readonly'    => true,
+						),
+						'reason'     => array(
+							'description' => __( 'Why not, when it cannot.', 'p2flux-for-woocommerce' ),
+							'type'        => 'string',
+							'readonly'    => true,
+						),
+					);
+				},
+			)
+		);
 	}
 
 	/**

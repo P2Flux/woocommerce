@@ -93,13 +93,21 @@
 			}
 
 			// A cart carrying a subscription is only offered this method when the gateway can
-			// actually honour a subscription: USD, no trial, no sign-up fee, one per order.
+			// actually honour THIS cart: USD, no trial, no sign-up fee, one subscription, and a
+			// first payment equal to the renewals. That answer comes with the cart, because it is a
+			// question about the cart - the data baked in when this script was registered cannot
+			// know what the shopper added since.
 			var requirements = ( args && args.paymentRequirements ) || [];
-			if ( requirements.indexOf( 'subscriptions' ) !== -1 ) {
-				return !! settings.recurring;
+			if ( requirements.indexOf( 'subscriptions' ) === -1 ) {
+				return true;
 			}
 
-			return true;
+			var extensions = ( args && args.cart && args.cart.extensions ) || {};
+			if ( extensions.p2flux && typeof extensions.p2flux.recurring === 'boolean' ) {
+				return extensions.p2flux.recurring;
+			}
+
+			return !! settings.recurring;
 		},
 		supports: {
 			features: settings.supports || [ 'products' ],

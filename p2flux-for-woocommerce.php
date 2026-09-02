@@ -101,6 +101,10 @@ add_action(
 		p2flux_wc_load();
 
 		P2Flux_WC_Periods::install();
+		/* The block checkout asks the cart whether this subscription can be paid, so the answer has to
+		 * be registered on the Store API - and registered here, where the classes exist, rather than
+		 * on `woocommerce_blocks_loaded`, which has already fired by now. */
+		P2Flux_WC_Blocks::register_cart_data();
 		P2Flux_WC_Ajax::init();
 		P2Flux_WC_Admin::init();
 		P2Flux_WC_Account::init();
@@ -128,9 +132,6 @@ add_action(
 	}
 );
 
-/**
- * Register the block checkout integration.
- */
 add_action(
 	'woocommerce_blocks_payment_method_type_registration',
 	static function ( $registry ) {

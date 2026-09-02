@@ -200,65 +200,65 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 			return true;
 		}
 
-		$recurring = WC()->cart->recurring_carts;
-		if ( ! is_array( $recurring ) || 1 !== count( $recurring ) ) {
-			return 'multiple';
-		}
+		/*
+		 * The cart's own contents, not `recurring_carts`.
+		 *
+		 * WooCommerce only fills `recurring_carts` once totals have been calculated, and this is asked
+		 * in contexts where they have not been - the block checkout builds its payment method list
+		 * early. Reading the items works everywhere and answers the same question.
+		 */
+		$subscriptions = 0;
+		$one_offs      = 0;
+		$recurring     = 0.0;
 
-		$cart = reset( $recurring );
+		foreach ( WC()->cart->get_cart() as $item ) {
+			$product = isset( $item['data'] ) ? $item['data'] : null;
+			if ( ! $product ) {
+				continue;
+			}
 
-		// A free trial or a sign-up fee makes the first payment differ from the recurring one, and
-		// the signed authorization has room for exactly one amount and one start.
-		if ( ! empty( $cart->cart_contents ) ) {
-			foreach ( $cart->cart_contents as $item ) {
-				$product = isset( $item['data'] ) ? $item['data'] : null;
-				if ( ! $product || ! class_exists( 'WC_Subscriptions_Product' ) ) {
-					continue;
-				}
-				if ( WC_Subscriptions_Product::get_trial_length( $product ) > 0 ) {
-					return 'trial';
-				}
-				if ( (float) WC_Subscriptions_Product::get_sign_up_fee( $product ) > 0 ) {
-					return 'signup_fee';
-				}
+			if ( ! class_exists( 'WC_Subscriptions_Product' ) || ! WC_Subscriptions_Product::is_subscription( $product ) ) {
+				$one_offs++;
+				continue;
+			}
+
+			$subscriptions++;
+			$recurring += (float) ( isset( $item['line_total'] ) ? $item['line_total'] : 0 );
+			$recurring += (float) ( isset( $item['line_tax'] ) ? $item['line_tax'] : 0 );
+
+			// A free trial or a sign-up fee makes the first payment differ from the recurring one,
+			// and the signed authorization has room for exactly one amount and one start.
+			if ( WC_Subscriptions_Product::get_trial_length( $product ) > 0 ) {
+				return 'trial';
+			}
+			if ( (float) WC_Subscriptions_Product::get_sign_up_fee( $product ) > 0 ) {
+				return 'signup_fee';
 			}
 		}
 
-		$total = P2Flux_WC_Money::to_units( $cart->total, '1' );
-		if ( null === $total ) {
-			return 'amount';
+		if ( $subscriptions < 1 ) {
+			return true;
 		}
-		if ( true !== P2Flux_WC_Money::check_bounds( $total, true ) ) {
+		// One authorization covers one subscription.
+		if ( $subscriptions > 1 ) {
+			return 'multiple';
+		}
+		/*
+		 * Anything else in the cart makes the first payment differ from the renewals - a one-off
+		 * product alongside the subscription, most often. The authorization carries ONE amount, so
+		 * this cannot be honoured, and the honest place to say so is here: offering the method and
+		 * then refusing at the last click of checkout is the worst of both.
+		 */
+		if ( $one_offs > 0 ) {
+			return 'initial_differs';
+		}
+
+		$units = P2Flux_WC_Money::to_units( wc_format_decimal( $recurring, 6 ), '1' );
+		if ( null === $units || true !== P2Flux_WC_Money::check_bounds( $units, true ) ) {
 			return 'amount';
 		}
 
 		return true;
-	}
-
-	/**
-	 * What the customer reads at checkout, under the method's own name.
-	 *
-	 * The configured description, plus the two things a first-time buyer needs to know and cannot
-	 * guess: that a wallet window opens after placing the order, and - in test mode - that this is
-	 * not real money.
-	 *
-	 * @return string
-	 */
-	public function get_description() {
-		$description = (string) $this->get_option( 'description' );
-		$lines       = array();
-
-		if ( '' !== trim( $description ) ) {
-			$lines[] = wp_kses_post( wpautop( wptexturize( $description ) ) );
-		}
-
-		$lines[] = '<p class="p2flux-method__note">' . esc_html__( 'After placing the order you will be asked to confirm the payment in your own wallet.', 'p2flux-for-woocommerce' ) . '</p>';
-
-		if ( P2Flux_WC_Client::TEST === P2Flux_WC_Client::current_environment() ) {
-			$lines[] = '<p class="p2flux-method__note"><strong>' . esc_html__( 'Test mode: settles on Base Sepolia and moves no real money.', 'p2flux-for-woocommerce' ) . '</strong></p>';
-		}
-
-		return implode( '', $lines );
 	}
 
 	/**

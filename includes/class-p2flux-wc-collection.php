@@ -169,7 +169,16 @@ class P2Flux_WC_Collection {
 			return true;
 		}
 
-		// pending, pending-cancel, or something a future WCS invents: nothing here says collect.
+		/*
+		 * A brand-new subscription sits in `pending` until its parent order is paid - and paying that
+		 * order is precisely the charge being asked about. Refusing here made every signup fail with
+		 * an authorization the customer had just signed.
+		 */
+		if ( 'pending' === $wcs_status ) {
+			return true;
+		}
+
+		// pending-cancel, expired, switched, or something a future WCS invents: nothing says collect.
 		return 'wcs_' . $wcs_status;
 	}
 }
