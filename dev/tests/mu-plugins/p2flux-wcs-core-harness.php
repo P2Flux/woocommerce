@@ -45,7 +45,14 @@ add_action(
 		require_once P2FLUX_WCS_CORE_DIR . '/includes/class-wc-subscriptions-core-plugin.php';
 		new WC_Subscriptions_Core_Plugin();
 	},
-	11
+	/*
+	 * Before the default priority, not after it. The core plugin hooks its own second stage
+	 * (`init_version_dependant_classes`: My Account endpoints, admin post types, meta boxes) onto
+	 * `plugins_loaded` at priority 10 from its constructor - so constructing it at 11 registers a
+	 * callback for a hook that has already fired, and the Subscriptions tab never appears.
+	 * WooCommerce's classes exist from plugin load, so 5 is safe.
+	 */
+	5
 );
 
 /*
