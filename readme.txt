@@ -123,7 +123,16 @@ never offers to pay again while a payment might already exist.
 = Can I refund? =
 
 Yes, in full, from your own wallet. The order screen has a P2Flux box that prepares the refund and
-opens your wallet; WooCommerce records the refund once P2Flux confirms the transfer on chain.
+opens your wallet; WooCommerce records the refund once P2Flux confirms the transfer on chain. The
+refund on chain is the USDC the customer paid; the WooCommerce refund record is the order total in
+your store currency, so on a non-USD store the two figures differ by the conversion applied at
+checkout (recurring products are USD-only, so the two always agree there).
+
+= What does the customer see at checkout? =
+
+They choose P2Flux, place the order, and a small P2Flux window opens from that same click: connect
+a wallet, confirm, done. The order's pay screen stays behind it to show progress, and if a browser
+refuses the window it offers a "Pay with your wallet" button that opens it on demand.
 WooCommerce's normal refund button is not offered, because no server can send money out of your
 wallet - only you can.
 

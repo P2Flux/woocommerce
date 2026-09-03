@@ -63,20 +63,33 @@ class P2Flux_WC_Native_Emails {
 			return;
 		}
 
-		$sent = $order->get_meta( self::NOTIFIED_META );
-		$sent = is_string( $sent ) && '' !== $sent ? json_decode( $sent, true ) : array();
-		$sent = is_array( $sent ) ? $sent : array();
-		if ( isset( $sent[ $reason ] ) ) {
+		/* The read-then-write below is what two workers finishing the same order in the same second
+		 * would race on. A short lock on the order makes it one writer; a worker that cannot take it
+		 * is behind one that is already sending, and sends nothing. */
+		$lock_key = 'notify-' . (int) $order->get_id();
+		$token    = P2Flux_WC_Lock::acquire( $lock_key );
+		if ( false === $token ) {
 			return;
 		}
-		// A period that passes after the customer was already told why it could not be collected
-		// is not news: one email per order for the cause, none for the consequence.
-		if ( 'missed' === $reason && ! empty( $sent ) ) {
-			return;
+		try {
+			$order = wc_get_order( $order->get_id() ) ?: $order;
+			$sent  = $order->get_meta( self::NOTIFIED_META );
+			$sent  = is_string( $sent ) && '' !== $sent ? json_decode( $sent, true ) : array();
+			$sent  = is_array( $sent ) ? $sent : array();
+			if ( isset( $sent[ $reason ] ) ) {
+				return;
+			}
+			// A period that passes after the customer was already told why it could not be collected
+			// is not news: one email per order for the cause, none for the consequence.
+			if ( 'missed' === $reason && ! empty( $sent ) ) {
+				return;
+			}
+			$sent[ $reason ] = time();
+			$order->update_meta_data( self::NOTIFIED_META, wp_json_encode( $sent ) );
+			$order->save();
+		} finally {
+			P2Flux_WC_Lock::release( $lock_key, $token );
 		}
-		$sent[ $reason ] = time();
-		$order->update_meta_data( self::NOTIFIED_META, wp_json_encode( $sent ) );
-		$order->save();
 
 		/**
 		 * Fires when a native subscription needs the customer's attention. The email class listens.

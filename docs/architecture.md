@@ -106,6 +106,31 @@ unavailable on several hosted stacks. The lock protects WooCommerce's own consis
 one-charge-per-period rule remains the last line of defence, so a lock failure costs a duplicate
 *request*, never a duplicate *payment*.
 
+## The wallet window opens from the click
+
+Browsers open a window only from a real click, and the hosted checkout's address (the setup or
+intent token) exists only after WooCommerce has created the order. So `assets/checkout-handoff.js`
+opens a blank, named window from the "Place order" click itself - block or classic checkout - and
+writes a "Preparing your payment…" splash into it. The splash polls its opener; once WooCommerce has
+redirected that tab to the order's pay screen, `assets/checkout.js` exposes
+`window.p2fluxHandoffAdopt`, hands the window the hosted address, and treats it as the popup it
+would otherwise have opened from its own button. A checkout that stops (validation, decline) closes
+the window; a window nobody answers closes itself after two minutes; a browser that refuses any of
+this gets the pay screen's button exactly as before. Nothing about payment changes: the window still
+only reports a claim, and the server still verifies it.
+
+## Waiting for the previous period
+
+When the API answers a charge with the previous period's transaction - still reconciling here, or
+settled here by exact recovery while the API waits for its own finality - the charger keeps this
+order's claim, notes it once, and asks again a minute later. Bounded by `SETTLING_RETRIES` (20): past
+that the order stays unpaid with a note and no further job, and the next scheduled collection or a
+person decides. The counter lives in the collection state and is cleared by the first real answer.
+
+Collection counters are written under the subscription lock by every charge path; the reconcile job
+bumps its own counter outside it, and a lost increment there costs one extra reconcile attempt, never
+a charge.
+
 ## The cancellation race
 
 WCS can persist a status change without our lock. The guarantee is therefore:

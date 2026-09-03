@@ -277,6 +277,17 @@ $jobs    = array_values( array_filter( $GLOBALS['p2flux_test_scheduled'], static
 check( 'an answer about an earlier period this store already settled with the same tx pays nothing and marks no conflict', $third && ! $third->is_paid() && '' === (string) $third->get_meta( '_p2flux_period_conflict' ) );
 check( 'the claim on the current period is kept for this order and a retry is scheduled', $row && (int) $row['order_id'] === (int) $third->get_id() && 'claimed' === $row['state'] && 1 === count( $jobs ) && 'active' === $sub->get_status() );
 check( 'the earlier period stays settled for its own order', 'settled' === P2Flux_WC_Periods::get( $auth['id'], 1 )['state'] && (int) P2Flux_WC_Periods::get( $auth['id'], 1 )['order_id'] === (int) $related[1] );
+// The wait is bounded: after SETTLING_RETRIES minutes of the same answer the order is left alone.
+$outcomes = array();
+for ( $i = 0; $i < P2Flux_WC_Charger::SETTLING_RETRIES + 1; $i++ ) {
+	$out        = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $sub ), $third->get_id() );
+	$outcomes[] = $out['code'];
+}
+$jobs_after = count( array_filter( $GLOBALS['p2flux_test_scheduled'], static function ( $j ) use ( $third ) { return (int) $third->get_id() === (int) $j['order'] && 'p2flux_wc_recharge' === $j['hook']; } ) );
+check( 'the wait for the previous period gives up after the cap, unpaid and without another job', 'PREVIOUS_PERIOD_STUCK' === end( $outcomes ) && 'PREVIOUS_PERIOD_SETTLING' === $outcomes[0] && ! wc_get_order( $third->get_id() )->is_paid() && 1 === $jobs_after );
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( 'a9', 32 ), 'period_index' => 2 ) );
+$out = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $sub ), $third->get_id() );
+check( 'a real answer afterwards pays the order and clears the counter', 'charged' === $out['status'] && 0 === P2Flux_WC_Collection::attempts( P2Flux_WC_Native_Subscription::load( $sub->get_id() ), 'settling' ) );
 
 echo "\nmisses: on hold, never cancelled, never collected later\n";
 list( $sub, $parent, $auth ) = native_signup( 5 );

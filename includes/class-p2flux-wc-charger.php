@@ -30,6 +30,9 @@ defined( 'ABSPATH' ) || exit;
  */
 class P2Flux_WC_Charger {
 
+	/** How many times a renewal waits (a minute each) for the previous period's charge to settle. */
+	const SETTLING_RETRIES = 20;
+
 	/**
 	 * Collect one period for a renewal (or the first charge on a parent order).
 	 *
@@ -249,6 +252,19 @@ class P2Flux_WC_Charger {
 			$settled_here = $earlier && P2Flux_WC_Periods::SETTLED === $earlier['state'] && $same_tx;
 			if ( $earlier && (int) $earlier['order_id'] !== (int) $order_id && ( $unsettled || $settled_here ) ) {
 				P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CLAIMED );
+				/*
+				 * Bounded. Finality takes minutes; an API that still answers about the earlier period
+				 * after this many minutes is not going to change its mind for being asked again every
+				 * sixty seconds. The order stays pending and the next scheduled collection (WCS) or the
+				 * period gate (native) decides what happens to it; a person can retry it from the order.
+				 */
+				if ( P2Flux_WC_Collection::bump( $subscription, 'settling' ) > self::SETTLING_RETRIES ) {
+					P2Flux_WC_Logger::error( 'gave up waiting for the previous period to settle', array( 'order' => $order_id, 'reported' => $reported ) );
+					$order->add_order_note( __( 'P2Flux kept reporting the previous billing period as still confirming. This renewal was left unpaid; it can be retried from the order once that charge settles.', 'p2flux-for-woocommerce' ) );
+					$order->save();
+
+					return self::refused( 'PREVIOUS_PERIOD_STUCK', 'The previous billing period has not settled.' );
+				}
 				P2Flux_WC_Jobs::schedule( 'recharge', $order_id, P2Flux_WC_Renewal::CONFIRMING_DELAY );
 				if ( (int) $order->get_meta( '_p2flux_waiting_on_period' ) !== $reported ) {
 					// Once per earlier period, not once per 60-second retry.
@@ -311,6 +327,9 @@ class P2Flux_WC_Charger {
 			P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CLAIMED );
 			$period = $reported;
 		}
+
+		// A real answer about this order: the wait for the previous period, if there was one, is over.
+		P2Flux_WC_Collection::reset( $subscription, 'settling' );
 
 		$decision = P2Flux_WC_Renewal::decide( $result, P2Flux_WC_Collection::get( $subscription )['attempts'] );
 		$hash     = isset( $result->txHash ) ? (string) $result->txHash : '';

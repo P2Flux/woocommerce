@@ -112,6 +112,25 @@ class P2Flux_WC_Collection {
 	}
 
 	/**
+	 * Forget one counter. A no-op (no write) when it is already zero.
+	 *
+	 * @param WC_Subscription|WC_Order $subscription Subscription.
+	 * @param string                   $kind         Counter name.
+	 * @return void
+	 */
+	public static function reset( $subscription, $kind ) {
+		$state    = self::get( $subscription );
+		$attempts = is_array( $state['attempts'] ) ? $state['attempts'] : array();
+		if ( ! isset( $attempts[ $kind ] ) ) {
+			return;
+		}
+		unset( $attempts[ $kind ] );
+		$state['attempts'] = $attempts;
+		$subscription->update_meta_data( self::META, wp_json_encode( $state ) );
+		$subscription->save();
+	}
+
+	/**
 	 * How many attempts of a kind have been made.
 	 *
 	 * @param WC_Subscription|WC_Order $subscription Subscription.

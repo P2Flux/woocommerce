@@ -45,6 +45,8 @@ class P2Flux_WC_Account {
 
 		$authorization = P2Flux_WC_Auth_History::active( $subscription );
 		if ( ! $authorization ) {
+			self::revoked_note( $subscription );
+
 			return;
 		}
 
@@ -124,6 +126,37 @@ class P2Flux_WC_Account {
 		echo '<div class="p2flux-actions"><button type="button" class="button p2flux-btn p2flux-btn--danger" id="p2flux-revoke">' . esc_html__( 'Revoke wallet authorization', 'p2flux-for-woocommerce' ) . '</button></div>';
 		echo '<p class="p2flux-status" id="p2flux-account-status" role="status" aria-live="polite"></p>';
 		echo '</div></section>';
+	}
+
+	/**
+	 * No active authorization, but one that was revoked: say so, with the transaction, rather than
+	 * leaving the page silent about where the permission went.
+	 *
+	 * @param object $subscription Subscription.
+	 * @return void
+	 */
+	private static function revoked_note( $subscription ) {
+		$revoked = null;
+		foreach ( P2Flux_WC_Auth_History::all( $subscription ) as $record ) {
+			if ( P2Flux_WC_Auth_History::REVOKED === ( $record['status'] ?? '' ) ) {
+				$revoked = $record;
+			}
+		}
+		if ( ! $revoked ) {
+			return;
+		}
+
+		self::enqueue_style();
+		$tx  = (string) $subscription->get_meta( '_p2flux_revoked_tx' );
+		$env = isset( $revoked['environment'] ) ? (string) $revoked['environment'] : P2Flux_WC_Client::current_environment();
+
+		echo '<section class="p2flux-account"><div class="p2flux-card">';
+		echo '<div class="p2flux-card__head"><h2>' . esc_html__( 'Wallet authorization', 'p2flux-for-woocommerce' ) . '</h2>' . self::badge( 'revoked', __( 'Revoked', 'p2flux-for-woocommerce' ) ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
+		echo '<p class="p2flux-note">' . esc_html__( 'You revoked this store’s permission to collect from your wallet. Nothing more can be charged under it.', 'p2flux-for-woocommerce' );
+		if ( '' !== $tx ) {
+			echo ' <a href="' . esc_url( P2Flux_WC_Client::explorer_url( $env ) . '/tx/' . $tx ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'View the revoke transaction', 'p2flux-for-woocommerce' ) . '</a>';
+		}
+		echo '</p></div></section>';
 	}
 
 	/**
