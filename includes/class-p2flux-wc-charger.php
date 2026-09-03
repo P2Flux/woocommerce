@@ -250,13 +250,18 @@ class P2Flux_WC_Charger {
 			if ( $earlier && (int) $earlier['order_id'] !== (int) $order_id && ( $unsettled || $settled_here ) ) {
 				P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CLAIMED );
 				P2Flux_WC_Jobs::schedule( 'recharge', $order_id, P2Flux_WC_Renewal::CONFIRMING_DELAY );
-				$order->add_order_note(
-					sprintf(
-						/* translators: 1: billing period index. */
-						__( 'P2Flux is still confirming the charge for billing period %d; this renewal will be retried once it settles.', 'p2flux-for-woocommerce' ),
-						$reported
-					)
-				);
+				if ( (int) $order->get_meta( '_p2flux_waiting_on_period' ) !== $reported ) {
+					// Once per earlier period, not once per 60-second retry.
+					$order->update_meta_data( '_p2flux_waiting_on_period', $reported );
+					$order->add_order_note(
+						sprintf(
+							/* translators: 1: billing period index. */
+							__( 'P2Flux is still confirming the charge for billing period %d; this renewal will be retried once it settles.', 'p2flux-for-woocommerce' ),
+							$reported
+						)
+					);
+					$order->save();
+				}
 
 				return array(
 					'status'  => 'pending',
