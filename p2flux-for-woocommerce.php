@@ -54,6 +54,8 @@ function p2flux_wc_load() {
 			'native-scheduler',
 			'native-product',
 			'native-emails',
+			'native-account',
+			'native-admin',
 			'collection',
 			'auth-history',
 			'intents',
@@ -115,6 +117,8 @@ add_action(
 		P2Flux_WC_Ajax::init();
 		P2Flux_WC_Native_Product::init();
 		P2Flux_WC_Native_Emails::init();
+		P2Flux_WC_Native_Account::init();
+		P2Flux_WC_Native_Admin::init();
 		P2Flux_WC_Admin::init();
 		P2Flux_WC_Account::init();
 		P2Flux_WC_Lifecycle::init();
