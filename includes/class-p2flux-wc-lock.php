@@ -54,11 +54,24 @@ class P2Flux_WC_Lock {
 		$value = ( time() + self::TTL ) . '|' . $token;
 
 		/*
-		 * add_option() is an INSERT against a UNIQUE index, so exactly one concurrent caller can
-		 * win. It is also the reason this is not a transient: transients can be object-cached, and
-		 * a cache is precisely the layer that would tell two processes they both got the lock.
+		 * A raw INSERT IGNORE against the options table's UNIQUE index, so exactly one concurrent
+		 * caller can win. Not add_option(): modern WordPress checks for the row first and then
+		 * writes with ON DUPLICATE KEY UPDATE, which is not atomic and reports success to both
+		 * racers - and an object cache can short-circuit its existence check entirely. Not a
+		 * transient either, for the same cache reason. This is the INSERT WordPress core itself
+		 * uses for its own upgrade lock.
 		 */
-		if ( add_option( $name, $value, '', 'no' ) ) {
+		$rows = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+				$name,
+				$value
+			)
+		);
+		if ( 1 === (int) $rows ) {
+			wp_cache_delete( $name, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+			wp_cache_delete( 'alloptions', 'options' );
 			self::$held[ $subscription_id ] = $token;
 			return $token;
 		}

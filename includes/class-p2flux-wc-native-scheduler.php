@@ -275,7 +275,11 @@ class P2Flux_WC_Native_Scheduler {
 			$delay = min( $delay, max( 0, $end + self::grace( (int) $auth['period'] ) - time() ) );
 		}
 
-		return max( 60, $delay );
+		// Never faster than a minute in production; under the short test fixture, the floor follows
+		// the period so a retry can still land inside it.
+		$floor = (int) $auth['period'] < 300 ? self::grace( (int) $auth['period'] ) : 60;
+
+		return max( $floor, $delay );
 	}
 
 	/**
@@ -350,6 +354,16 @@ class P2Flux_WC_Native_Scheduler {
 
 		$cycle = (int) $order->get_meta( self::CYCLE_META );
 		if ( $cycle < 1 || $cycle <= (int) $subscription->get( 'cycle' ) ) {
+			return;
+		}
+		if ( $subscription->has_status( array( P2Flux_WC_Native_Subscription::CANCELLED, P2Flux_WC_Native_Subscription::EXPIRED ) ) ) {
+			// The money is recorded on the order; the subscription's decision stands. Nothing here
+			// may reopen a schedule or overwrite the cancellation's own state.
+			if ( (int) $subscription->get( 'current_renewal_order_id' ) === (int) $order->get_id() ) {
+				$subscription->set( 'current_renewal_order_id', 0 );
+				$subscription->save();
+			}
+
 			return;
 		}
 

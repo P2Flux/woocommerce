@@ -71,7 +71,7 @@ class P2Flux_WC_Renewal {
 			 * paid without one cannot be attributed, audited or refunded. Those go to
 			 * reconciliation, which recovers the exact transaction and pays the order then.
 			 */
-			if ( '' !== $hash ) {
+			if ( '' !== $hash && 'CHARGED' === $status ) {
 				return self::outcome(
 					array(
 						'outcome' => 'paid',

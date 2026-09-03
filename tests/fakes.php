@@ -175,6 +175,21 @@ class P2Flux_WC_Periods {
 	 * @param int    $order_id     Order.
 	 * @return bool
 	 */
+	/**
+	 * @param int $before Unix seconds.
+	 * @return array
+	 */
+	public static function stale_charging( $before ) {
+		$out = array();
+		foreach ( $GLOBALS['p2flux_test_periods'] as $row ) {
+			if ( self::CHARGING === $row['state'] && (int) $row['updated'] < (int) $before ) {
+				$out[] = $row;
+			}
+		}
+
+		return $out;
+	}
+
 	public static function owned_by( $auth_id, $period_index, $order_id ) {
 		$row = self::get( $auth_id, $period_index );
 

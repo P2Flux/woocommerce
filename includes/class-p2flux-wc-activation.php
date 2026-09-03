@@ -98,6 +98,7 @@ class P2Flux_WC_Activation {
 						'end'         => (int) $terms['end'],
 						'salt'        => (string) $terms['salt'],
 						'activated_order' => $order->get_id(),
+						'allowance'   => isset( $pending['allowance'] ) ? (string) $pending['allowance'] : 'unlimited',
 					),
 					isset( $pending['replaces_auth_id'] ) ? $pending['replaces_auth_id'] : null
 				);

@@ -89,8 +89,9 @@ class P2Flux_WC_Charger {
 		}
 
 		// Already paid, by us or by the customer through the manual fallback. Nothing to do, and
-		// nothing to schedule: this is the ordinary end of a retry ladder, not a failure.
-		if ( $order->is_paid() || $order->get_meta( '_p2flux_manual_paid' ) ) {
+		// nothing to schedule: this is the ordinary end of a retry ladder, not a failure. A refunded
+		// order is not "paid" to WooCommerce, but it was collected and given back; never again.
+		if ( $order->is_paid() || $order->get_meta( '_p2flux_manual_paid' ) || 'refunded' === $order->get_status() || '' !== (string) $order->get_meta( '_p2flux_tx_hash' ) ) {
 			return self::refused( 'ALREADY_PAID', 'This order is already paid.' );
 		}
 
@@ -152,7 +153,7 @@ class P2Flux_WC_Charger {
 		if ( true !== $gate ) {
 			P2Flux_WC_Logger::log( 'charge refused by the engine gate', array( 'reason' => $gate['code'], 'order' => $order_id, 'period' => $period ) );
 			if ( 'CYCLE_NOT_OPEN' === $gate['code'] && ! empty( $gate['retry_at'] ) ) {
-				P2Flux_WC_Jobs::schedule( 'recharge', $order_id, max( 60, (int) $gate['retry_at'] - time() ) );
+				P2Flux_WC_Jobs::schedule( 'recharge', $order_id, max( 5, (int) $gate['retry_at'] - time() ) );
 			}
 
 			return self::refused( $gate['code'], 'This renewal cannot be collected in the current billing period.' );
@@ -186,6 +187,12 @@ class P2Flux_WC_Charger {
 
 		if ( P2Flux_WC_Periods::MANUAL === $claim['state'] ) {
 			return self::refused( 'MANUALLY_PAID', 'This renewal was already paid by hand.' );
+		}
+		// A period this order already collected, or is still collecting, is never sent again: the
+		// protocol would answer ALREADY_CHARGED and reconciliation would re-pay - possibly an order
+		// that was since refunded, which is not "paid" to WooCommerce but was very much collected.
+		if ( in_array( $claim['state'], array( P2Flux_WC_Periods::SETTLED, P2Flux_WC_Periods::RECONCILING ), true ) ) {
+			return self::refused( 'PERIOD_NOT_CHARGEABLE', 'This billing period was already collected.' );
 		}
 
 		// What we know before sending: the attempt time, which becomes the hint that lets a later
@@ -373,9 +380,8 @@ class P2Flux_WC_Charger {
 			);
 		}
 
-		if ( '' !== $decision['counter'] ) {
-			P2Flux_WC_Collection::bump( $subscription, $decision['counter'] );
-		}
+		// State first, then the attempt inside it: a state change resets the counters, and the
+		// first dunning failure must count as one, not zero.
 		if ( null !== $decision['collection'] ) {
 			P2Flux_WC_Collection::set(
 				$subscription,
@@ -385,6 +391,9 @@ class P2Flux_WC_Charger {
 					'reason'           => isset( $result->status ) ? (string) $result->status : '',
 				)
 			);
+		}
+		if ( '' !== $decision['counter'] ) {
+			P2Flux_WC_Collection::bump( $subscription, $decision['counter'] );
 		}
 		if ( 'cancel' === $decision['outcome'] ) {
 			P2Flux_WC_Auth_History::mark(

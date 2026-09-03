@@ -52,6 +52,11 @@ class P2Flux_WC_Refunds {
 		if ( in_array( $state['status'], array( self::REFUNDED, self::SENT ), true ) ) {
 			return new WP_Error( 'p2flux_refunded', __( 'This payment has already been refunded, or a refund is already on its way.', 'p2flux-for-woocommerce' ) );
 		}
+		if ( self::MISMATCH === $state['status'] ) {
+			// A transfer went out that could not be matched. A second token would let a second one
+			// go out; a person sorts the first before anything else is sent.
+			return new WP_Error( 'p2flux_mismatch_open', __( 'A refund transfer for this order could not be matched to the payment. Re-check it before sending another; nothing more can be prepared until then.', 'p2flux-for-woocommerce' ) );
+		}
 		if ( self::RESERVED === $state['status'] && ( time() - (int) $state['ts'] ) < self::RESERVATION_TTL ) {
 			return new WP_Error( 'p2flux_reserved', __( 'A refund for this order was started a moment ago. Finish that one, or wait twenty minutes and try again.', 'p2flux-for-woocommerce' ) );
 		}
@@ -86,6 +91,12 @@ class P2Flux_WC_Refunds {
 		}
 
 		$environment = (string) $order->get_meta( '_p2flux_env' );
+
+		if ( empty( $prepared['refund_token'] ) ) {
+			self::clear( $order );
+
+			return new WP_Error( 'p2flux_unavailable', __( 'P2Flux did not return a refund session. Please try again in a moment.', 'p2flux-for-woocommerce' ) );
+		}
 
 		return array(
 			'url'   => P2Flux_WC_Client::checkout_url( $environment ) . '/#/refund/' . rawurlencode( (string) $prepared['refund_token'] ),
@@ -158,6 +169,13 @@ class P2Flux_WC_Refunds {
 			$order->save();
 
 			return new WP_Error( 'p2flux_mismatch', __( 'That transfer does not match the original payment. Nothing was recorded.', 'p2flux-for-woocommerce' ) );
+		}
+
+		// Verified. Book it exactly once: a second verification of the same transfer - two admins,
+		// a double click - must not create a second WooCommerce refund for one USDC transfer.
+		$fresh = wc_get_order( $order->get_id() );
+		if ( ! $fresh || self::REFUNDED === self::state( $fresh )['status'] || $fresh->get_total_refunded() > 0 ) {
+			return array( 'status' => 'refunded', 'tx_hash' => $hash );
 		}
 
 		$explorer = P2Flux_WC_Client::explorer_url( (string) $order->get_meta( '_p2flux_env' ) );

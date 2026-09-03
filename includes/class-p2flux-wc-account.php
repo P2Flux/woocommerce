@@ -187,7 +187,9 @@ class P2Flux_WC_Account {
 					'recipient' => $recipient,
 					'amount'    => P2Flux_WC_Money::format( $units ),
 					'period'    => $period,
-					'allowance' => P2Flux_WC_Money::allowance_term( isset( $settings['allowance'] ) ? (string) $settings['allowance'] : 'unlimited' ),
+					// The same allowance shape the customer signed up with: a re-authorization changes the
+					// amount, not the terms around it.
+					'allowance' => P2Flux_WC_Money::allowance_term( isset( $active['allowance'] ) ? (string) $active['allowance'] : ( isset( $settings['allowance'] ) ? (string) $settings['allowance'] : 'unlimited' ) ),
 				)
 			);
 		} catch ( \Exception $e ) {
@@ -208,6 +210,7 @@ class P2Flux_WC_Account {
 				'environment'      => $environment,
 				'order_id'         => (int) $collection['renewal_order_id'],
 				'replaces_auth_id' => (string) $active['id'],
+				'allowance'        => isset( $active['allowance'] ) ? (string) $active['allowance'] : 'unlimited',
 			)
 		);
 

@@ -431,6 +431,7 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 
 		$record = array(
 			'purpose'      => 'initial',
+			'allowance'    => (string) $this->get_option( 'allowance', 'unlimited' ),
 			'setup_token'  => (string) $setup['setup_token'],
 			'salt'         => isset( $setup['salt'] ) ? (string) $setup['salt'] : '',
 			'expires'      => isset( $setup['expires_at'] ) ? (int) $setup['expires_at'] : time() + DAY_IN_SECONDS,

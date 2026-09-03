@@ -28,6 +28,7 @@ require __DIR__ . '/../includes/class-p2flux-wc-native-subscription.php';
 require __DIR__ . '/../includes/class-p2flux-wc-native-scheduler.php';
 require __DIR__ . '/../includes/class-p2flux-wc-charger.php';
 require __DIR__ . '/../includes/class-p2flux-wc-jobs.php';
+require __DIR__ . '/../includes/class-p2flux-wc-native-account.php';
 
 $failures = 0;
 $checks   = 0;
@@ -350,6 +351,63 @@ check( 'charging a subscription against an order that is not its own is refused 
 $foreign = p2flux_test_register_order( new P2Flux_Test_Native_Order( 777777, 'pending' ) );
 list( $out ) = collect( $a, $foreign->get_id() );
 check( 'an order that belongs to no subscription is refused too', 'refused' === $out['status'] && 'ORDER_MISMATCH' === $out['code'] );
+
+echo "\naudit regressions: stale charges, cancelled mid-flight, sooner retries, refunded orders, counters\n";
+// R2-F2: a CHARGING row whose worker died is handed to reconciliation by the sweep.
+list( $sub, $parent, $auth ) = native_signup( 5 );
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( '7d', 32 ), 'period_index' => 0 ) );
+collect( $sub, $parent->get_id() );
+$dead = wc_create_order( array( 'status' => 'pending', 'parent' => $sub->get_parent_id() ) );
+$dead->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $sub->get_id() );
+$dead->update_meta_data( P2Flux_WC_Native_Scheduler::CYCLE_META, 1 );
+P2Flux_WC_Periods::claim( array( 'auth_id' => $AUTH, 'period_index' => 1, 'subscription_id' => $sub->get_id(), 'order_id' => $dead->get_id(), 'units' => 10000000, 'environment' => 'test' ) );
+P2Flux_WC_Periods::set_state( $AUTH, 1, P2Flux_WC_Periods::CHARGING );
+$GLOBALS['p2flux_test_periods'][ strtolower( $AUTH ) . ':1' ]['updated'] = time() - 3600;
+$GLOBALS['p2flux_test_scheduled'] = array();
+P2Flux_WC_Jobs::sweep();
+$row = P2Flux_WC_Periods::get( $AUTH, 1 );
+$jobs = array_filter( $GLOBALS['p2flux_test_scheduled'], static function ( $j ) use ( $dead ) { return P2Flux_WC_Jobs::RECONCILE === $j['hook'] && (int) $j['order'] === $dead->get_id(); } );
+check( 'a stale CHARGING period becomes RECONCILING with a reconcile job, and the order is not paid', P2Flux_WC_Periods::RECONCILING === $row['state'] && 1 === count( $jobs ) && ! $dead->is_paid() && $dead->get_meta( '_p2flux_reconciling' ) );
+// R2-F9: a period already settled for this order is never charged again, nor a refunded order.
+p2flux_test_reset_calls();
+list( $out ) = collect( $sub, $parent->get_id() );
+check( 'a parent whose period settled is refused without a request', 'refused' === $out['status'] && 0 === count( p2flux_test_calls( '/v1/charges' ) ) );
+$parent->set_status( 'refunded' ); $parent->paid = false;
+list( $out ) = collect( $sub, $parent->get_id() );
+check( 'a refunded order is refused without a request', 'refused' === $out['status'] && 'ALREADY_PAID' === $out['code'] && 0 === count( p2flux_test_calls( '/v1/charges' ) ) );
+// R2-F5: a settlement landing after cancellation records the money and leaves the cancellation alone.
+list( $sub, $parent, $auth ) = native_signup( 5 );
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( '8e', 32 ), 'period_index' => 0 ) );
+collect( $sub, $parent->get_id() );
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+$renewal = wc_create_order( array( 'status' => 'pending', 'parent' => $sub->get_parent_id() ) );
+$renewal->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $sub->get_id() );
+$renewal->update_meta_data( P2Flux_WC_Native_Scheduler::CYCLE_META, 1 );
+$renewal->update_meta_data( '_p2flux_auth_id', $AUTH );
+$renewal->update_meta_data( '_p2flux_period_index', 1 );
+P2Flux_WC_Native_Account::cancel_subscription( $sub, 'customer cancelled' );
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+$before = $sub->get_meta( '_p2flux_collection' );
+P2Flux_WC_Charger::mark_paid( $renewal, P2Flux_WC_Auth_History::get( $sub, $AUTH ), 1, '0x' . str_repeat( '9f', 32 ) );
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+check( 'money recorded, subscription still cancelled, collection state untouched, no schedule', $renewal->is_paid() && 'cancelled' === $sub->get_status() && $before === $sub->get_meta( '_p2flux_collection' ) && 0 === $sub->timestamp( 'next_payment_at' ) && 0 === count( p2flux_test_native_jobs( $sub->get_id() ) ) );
+// R2-F6: a sooner request replaces a later pending job.
+$GLOBALS['p2flux_test_scheduled'] = array();
+P2Flux_WC_Jobs::schedule( 'recharge', 4242, 86400 );
+P2Flux_WC_Jobs::schedule( 'recharge', 4242, 60 );
+$jobs = array_values( array_filter( $GLOBALS['p2flux_test_scheduled'], static function ( $j ) { return 4242 === (int) $j['order']; } ) );
+check( 'the sooner retry replaces the later one, and only one job remains', 1 === count( $jobs ) && $jobs[0]['delay'] <= 60 );
+P2Flux_WC_Jobs::schedule( 'recharge', 4242, 86400 );
+$jobs = array_values( array_filter( $GLOBALS['p2flux_test_scheduled'], static function ( $j ) { return 4242 === (int) $j['order']; } ) );
+check( 'a later request does not displace a sooner pending job', 1 === count( $jobs ) && $jobs[0]['delay'] <= 60 );
+// R2-F11: the first dunning failure counts as one.
+list( $sub, $parent, $auth ) = native_signup( 5 );
+p2flux_test_respond( '/v1/charges', array( 'error' => 'INSUFFICIENT_BALANCE', 'action' => 'CUSTOMER_ACTION_REQUIRED' ), 400 );
+list( $out, $sub ) = collect( $sub, $parent->get_id() );
+check( 'the first dunning failure is counted', 1 === P2Flux_WC_Collection::attempts( $sub, 'dunning' ) );
+// R2-F16: ALREADY_CHARGED with a hash still goes through recovery, never straight to paid.
+$r = json_decode( wp_json_encode( array( 'status' => 'ALREADY_CHARGED', 'action' => 'SUCCESS', 'ok' => true, 'already_paid' => true, 'txHash' => '0x' . str_repeat( 'aa', 32 ), 'periodIndex' => 3 ) ) );
+check( 'ALREADY_CHARGED with a hash is reconciled, not paid outright', 'reconcile' === P2Flux_WC_Renewal::decide( $r, array() )['outcome'] );
 
 echo "\nthe record: whole-row writes survive an interleaved writer\n";
 list( $sub ) = native_signup( 5 );

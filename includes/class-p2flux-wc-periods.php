@@ -221,6 +221,23 @@ class P2Flux_WC_Periods {
 	}
 
 	/**
+	 * Periods still marked CHARGING since before a moment: requests whose answer never came back.
+	 *
+	 * @param int $before Unix seconds.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function stale_charging( $before ) {
+		global $wpdb;
+
+		$table = self::table();
+
+		return $wpdb->get_results(
+			$wpdb->prepare( "SELECT * FROM {$table} WHERE state = %s AND updated_at < %s ORDER BY id ASC LIMIT 100", self::CHARGING, gmdate( 'Y-m-d H:i:s', (int) $before ) ),
+			ARRAY_A
+		);
+	}
+
+	/**
 	 * May this order be paid by a settlement of this period?
 	 *
 	 * @param string $auth_id      Subscription id.

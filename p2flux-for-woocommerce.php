@@ -169,6 +169,10 @@ register_activation_hook(
 		if ( class_exists( 'WC_Payment_Gateway' ) ) {
 			p2flux_wc_load();
 			P2Flux_WC_Periods::install();
+			// Schedules that lost their job while the plugin was inactive; at most one charge each.
+			if ( function_exists( 'as_schedule_single_action' ) ) {
+				P2Flux_WC_Native_Scheduler::sweep();
+			}
 		}
 	}
 );

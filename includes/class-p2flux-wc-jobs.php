@@ -68,12 +68,18 @@ class P2Flux_WC_Jobs {
 		$args = array( (int) $order_id );
 
 		// One pending job per order per kind: a retry ladder that schedules itself twice halves its
-		// own interval every round.
+		// own interval every round. But a request for SOONER wins: a day-long dunning wait must not
+		// swallow the sixty-second retry a period boundary asked for.
+		$when = time() + max( 0, (int) $delay );
 		if ( as_has_scheduled_action( $hook, $args, self::GROUP ) ) {
-			return;
+			$pending = function_exists( 'as_next_scheduled_action' ) ? as_next_scheduled_action( $hook, $args, self::GROUP ) : true;
+			if ( ! is_int( $pending ) || $pending <= $when + 5 ) {
+				return;
+			}
+			as_unschedule_all_actions( $hook, $args, self::GROUP );
 		}
 
-		as_schedule_single_action( time() + max( 0, (int) $delay ), $hook, $args, self::GROUP );
+		as_schedule_single_action( $when, $hook, $args, self::GROUP );
 	}
 
 	/**
@@ -102,10 +108,6 @@ class P2Flux_WC_Jobs {
 	 * @return void
 	 */
 	public static function unschedule_subscription( $subscription ) {
-		if ( ! P2Flux_WC_Subscriptions::is_native( $subscription ) ) {
-			self::unschedule_order( $subscription->get_id() );
-		}
-
 		foreach ( $subscription->get_related_orders( 'ids' ) as $order_id ) {
 			self::unschedule_order( $order_id );
 		}
@@ -297,6 +299,25 @@ class P2Flux_WC_Jobs {
 			if ( ! empty( P2Flux_WC_Intents::recoverable( $order ) ) ) {
 				self::schedule( 'recover', $order_id, 0 );
 			}
+		}
+
+		/*
+		 * A period left CHARGING is a request whose worker died before the answer came back: the
+		 * money may have moved. Older than any lease could last, it is handed to reconciliation,
+		 * which asks the chain for the exact settlement and pays the order only if one exists.
+		 */
+		foreach ( P2Flux_WC_Periods::stale_charging( time() - 2 * P2Flux_WC_Lock::TTL ) as $row ) {
+			$order = wc_get_order( (int) $row['order_id'] );
+			if ( ! $order || $order->is_paid() ) {
+				continue;
+			}
+			P2Flux_WC_Periods::set_state( $row['auth_id'], (int) $row['period_index'], P2Flux_WC_Periods::RECONCILING );
+			$order->update_meta_data( '_p2flux_reconciling', 1 );
+			$order->update_meta_data( '_p2flux_auth_id', $row['auth_id'] );
+			$order->update_meta_data( '_p2flux_period_index', (int) $row['period_index'] );
+			$order->add_order_note( __( 'P2Flux: a charge for this period was sent but its answer was never recorded. Checking the chain for the settlement before deciding anything.', 'p2flux-for-woocommerce' ) );
+			$order->save();
+			self::schedule( 'reconcile', $order->get_id(), 0 );
 		}
 
 		// Native subscriptions: signups whose window closed, schedules that lost their job.
