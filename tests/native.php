@@ -451,6 +451,37 @@ foreach ( $GLOBALS['p2flux_test_native_rows'] as $row ) {
 }
 check( 'no order note or native row holds a plaintext capability', ! $leak );
 
+
+echo "\nabandoned signups: a never-authorized signup expires after the activation TTL, or when its order is cancelled\n";
+function native_abandoned() {
+	global $RECIPIENT;
+	$parent = p2flux_test_register_order( new P2Flux_Test_Native_Order( $GLOBALS['p2flux_test_next_order']++, 'pending' ) );
+	$sub    = P2Flux_WC_Native_Subscription::create( array( 'user_id' => 1, 'product_id' => 77, 'parent_order_id' => $parent->get_id(), 'amount_units' => 10000000, 'amount_display' => '10.000000', 'product_name' => 'Test plan', 'interval_type' => 'day', 'env' => 'test', 'recipient' => $RECIPIENT ) );
+	$parent->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $sub->get_id() );
+	return array( $sub, $parent );
+}
+list( $sub, $parent ) = native_abandoned();
+P2Flux_WC_Native_Scheduler::sweep();
+check( 'a fresh unauthorized signup is left alone by the sweep', 'pending' === P2Flux_WC_Native_Subscription::load( $sub->get_id() )->get_status() );
+$sub->set( 'created_at', gmdate( 'Y-m-d H:i:s', time() - P2Flux_WC_Native_Subscription::ACTIVATION_TTL - 2 * HOUR_IN_SECONDS ) );
+$sub->save();
+P2Flux_WC_Native_Scheduler::sweep();
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+check( 'an unauthorized signup older than the activation TTL is expired by the sweep and its order cancelled', 'expired' === $sub->get_status() && 'cancelled' === $parent->get_status() );
+list( $sub, $parent ) = native_abandoned();
+$parent->update_status( 'cancelled' );
+P2Flux_WC_Native_Scheduler::parent_cancelled( $parent->get_id() );
+check( 'cancelling an unpaid signup order expires the signup', 'expired' === P2Flux_WC_Native_Subscription::load( $sub->get_id() )->get_status() );
+list( $sub, $parent, $auth ) = native_signup( 5 );
+$parent->update_status( 'cancelled' );
+P2Flux_WC_Native_Scheduler::parent_cancelled( $parent->get_id() );
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+check( 'cancelling an authorized but unpaid signup order expires the signup and keeps the authorization for revoke', 'expired' === $sub->get_status() && P2Flux_WC_Auth_History::active( $sub ) && $auth['id'] === P2Flux_WC_Auth_History::active( $sub )['id'] );
+list( $sub, $parent ) = native_signup( 5 );
+$parent->paid = true;
+P2Flux_WC_Native_Scheduler::parent_cancelled( $parent->get_id() );
+check( 'the cancelled hook ignores a paid signup order', 'pending' === P2Flux_WC_Native_Subscription::load( $sub->get_id() )->get_status() );
+
 echo "\n{$checks} checks, {$failures} failures\n";
 if ( $failures ) {
 	exit( 1 );

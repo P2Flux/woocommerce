@@ -124,9 +124,11 @@ class P2Flux_WC_Native_Store {
 		$rows  = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM {$table} WHERE ( status IN ('active','on-hold') AND next_payment_at IS NOT NULL AND next_payment_at <= %s )
-				 OR ( status = 'pending' AND activation_deadline IS NOT NULL AND activation_deadline <= %s ) ORDER BY id ASC LIMIT 200",
+				 OR ( status = 'pending' AND activation_deadline IS NOT NULL AND activation_deadline <= %s )
+				 OR ( status = 'pending' AND activation_deadline IS NULL AND created_at <= %s ) ORDER BY id ASC LIMIT 200",
 				$at,
-				$at
+				$at,
+				gmdate( 'Y-m-d H:i:s', (int) $before - P2Flux_WC_Native_Subscription::ACTIVATION_TTL )
 			),
 			ARRAY_A
 		);

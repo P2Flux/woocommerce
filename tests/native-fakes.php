@@ -106,6 +106,8 @@ class P2Flux_WC_Native_Store {
 				$out[] = $row;
 			} elseif ( 'pending' === $row['status'] && ! empty( $row['activation_deadline'] ) && $row['activation_deadline'] <= $at ) {
 				$out[] = $row;
+			} elseif ( 'pending' === $row['status'] && empty( $row['activation_deadline'] ) && $row['created_at'] <= gmdate( 'Y-m-d H:i:s', (int) $before - P2Flux_WC_Native_Subscription::ACTIVATION_TTL ) ) {
+				$out[] = $row;
 			}
 		}
 

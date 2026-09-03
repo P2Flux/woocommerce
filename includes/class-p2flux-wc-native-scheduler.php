@@ -51,6 +51,22 @@ class P2Flux_WC_Native_Scheduler {
 	 */
 	public static function init() {
 		add_action( self::HOOK, array( __CLASS__, 'renewal' ) );
+		add_action( 'woocommerce_order_status_cancelled', array( __CLASS__, 'parent_cancelled' ) );
+	}
+
+	/**
+	 * A signup order was cancelled (by the store, or WooCommerce's unpaid-order cleanup) before it
+	 * was paid: the signup will never activate.
+	 *
+	 * @param int $order_id Order.
+	 * @return void
+	 */
+	public static function parent_cancelled( $order_id ) {
+		$order        = wc_get_order( $order_id );
+		$subscription = $order ? P2Flux_WC_Subscriptions::for_order( $order, true ) : null;
+		if ( P2Flux_WC_Subscriptions::is_native( $subscription ) && ! $order->is_paid() && ! self::is_reconciling( $order ) ) {
+			self::expire( $subscription, __( 'The signup order was cancelled before the first payment was collected. No payment will be attempted for this signup.', 'p2flux-for-woocommerce' ) );
+		}
 	}
 
 	/*
