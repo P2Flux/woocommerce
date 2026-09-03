@@ -217,6 +217,8 @@ class P2Flux_WC_Charger {
 					'the charge answered about a period another order owns',
 					array( 'order' => $order_id, 'claimed' => (int) $period, 'reported' => $reported )
 				);
+				// The period claimed from the clock was never collected by this attempt either.
+				P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CLAIMED );
 				$order->update_meta_data( '_p2flux_period_conflict', $reported );
 				$order->add_order_note(
 					sprintf(
