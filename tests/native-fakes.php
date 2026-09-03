@@ -359,3 +359,18 @@ if ( ! function_exists( '_n' ) ) {
 		return 1 === (int) $n ? $single : $plural;
 	}
 }
+
+if ( ! function_exists( 'get_user_by' ) ) {
+	/**
+	 * @param string $field Field.
+	 * @param string $value Value.
+	 * @return object|false
+	 */
+	function get_user_by( $field, $value ) {
+		if ( 'email' === $field && isset( $GLOBALS['p2flux_test_user_email'] ) && $GLOBALS['p2flux_test_user_email'] === $value ) {
+			return (object) array( 'ID' => 1, 'user_email' => $value, 'display_name' => 'Buyer' );
+		}
+
+		return false;
+	}
+}

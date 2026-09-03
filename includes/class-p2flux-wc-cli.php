@@ -36,20 +36,29 @@ class P2Flux_WC_CLI {
 		if ( null === P2Flux_WC_Crypto::current_key() ) {
 			WP_CLI::error( 'No encryption key is configured, so there is nothing to rotate to.' );
 		}
-		if ( ! function_exists( 'wcs_get_subscriptions' ) ) {
-			WP_CLI::error( 'WooCommerce Subscriptions is not active.' );
-		}
-
 		$moved   = 0;
 		$skipped = 0;
 		$stuck   = 0;
 
-		$subscriptions = wcs_get_subscriptions(
-			array(
-				'subscriptions_per_page' => -1,
-				'subscription_status'    => 'any',
-			)
-		);
+		// Both engines: WooCommerce Subscriptions when it is active, and the plugin's own records always.
+		$subscriptions = array();
+		if ( function_exists( 'wcs_get_subscriptions' ) ) {
+			$subscriptions = wcs_get_subscriptions(
+				array(
+					'subscriptions_per_page' => -1,
+					'subscription_status'    => 'any',
+				)
+			);
+		}
+		if ( class_exists( 'P2Flux_WC_Native_Subscription' ) ) {
+			for ( $offset = 0; ; $offset += 200 ) {
+				$page = P2Flux_WC_Native_Subscription::all( 200, $offset );
+				if ( empty( $page ) ) {
+					break;
+				}
+				$subscriptions = array_merge( $subscriptions, $page );
+			}
+		}
 
 		foreach ( $subscriptions as $subscription ) {
 			if ( 'p2flux' !== $subscription->get_payment_method() ) {

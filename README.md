@@ -4,7 +4,7 @@ Accept USDC on Base directly to your own wallet, including subscriptions. Non-cu
 moves from the customer's wallet to yours in one transaction, and nobody holds it in between.
 
 - **One-time payments** in any store currency the plugin can convert.
-- **Subscriptions** through WooCommerce Subscriptions, priced in USD: one wallet authorization at
+- **Subscriptions**: simple fixed-price ones with the plugin's own Native Subscriptions (no other plugin), and everything WooCommerce Subscriptions offers through its adapter - priced in USD: one wallet authorization at
   signup, and the store collects each renewal on the schedule WooCommerce Subscriptions decides.
 - **Test mode** on Base Sepolia with faucet money; the same contracts and the same failure modes as
   production.
@@ -24,7 +24,7 @@ Taken from the plugin header and from the checks the gateway makes before offeri
 | WooCommerce | 8.0 or newer; HPOS and the block checkout are both supported |
 | PHP | 8.1 or newer, **64-bit** — the money arithmetic refuses to run on a 32-bit build rather than overflow |
 | `sodium` | ships with PHP 7.2+ and with WordPress itself; stored subscription authorizations are encrypted with it |
-| WooCommerce Subscriptions | only for recurring products |
+| WooCommerce Subscriptions | only for advanced recurring features (trials, sign-up fees, variable, switching); simple fixed subscriptions need nothing extra |
 | A wallet on Base | your payout address; payments arrive there directly |
 
 ## How it is put together
@@ -52,7 +52,7 @@ includes/
   class-p2flux-wc-blocks.php        block checkout integration
   class-p2flux-wc-subscriptions.php one place that finds a subscription, whichever engine owns it
   class-p2flux-wc-native-*.php      native subscriptions: record + store, scheduler, product/cart/gateway rules,
-                                    account page, admin screen, emails
+                                    account page, admin screen, emails, privacy export/erasure
   class-p2flux-wc-calendar.php      UTC due dates from an anchor: month-end clamp, leap years
   emails/, ../templates/emails/     the two native WooCommerce emails
   vendor/p2flux/                    the PHP SDK, namespaced for this plugin, curl-free
@@ -74,8 +74,9 @@ Read it before changing anything under `includes/` that touches an order's paid 
 ## Developing
 
 ```bash
-php tests/unit.php            # 84 checks, no WordPress needed
-php tests/integration.php     # 38 checks, real charger against a fake store and a stub API
+php tests/unit.php            # 119 checks, no WordPress needed
+php tests/integration.php     # 42 checks, real charger against a fake store and a stub API
+php tests/native.php          # 80 checks, the native engine against an in-memory store
 bash dev/release-check.sh     # everything that must be true of a package
 
 docker compose -f dev/docker-compose.yml up -d
@@ -98,7 +99,7 @@ Faucets for Base Sepolia: [ETH](https://portal.cdp.coinbase.com/products/faucet)
 ### Vendoring the SDK
 
 ```bash
-dev/vendor-sdk.sh ../p2flux_sdk_php v0.6.0
+dev/vendor-sdk.sh ../p2flux_sdk_php v0.6.1
 ```
 
 Copies the client, rewrites its namespace to `P2FluxWC\Vendor\P2Flux` so another plugin's copy of

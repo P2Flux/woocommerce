@@ -4,6 +4,8 @@ Tags: woocommerce, payments, usdc, crypto, subscriptions
 Requires at least: 6.5
 Tested up to: 6.7
 Requires PHP: 8.1
+WC requires at least: 8.0
+WC tested up to: 11.0
 Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -80,6 +82,24 @@ request itself; the response is cached for an hour. No order, customer or store 
 
 Terms of service: https://www.coinbase.com/legal/user_agreement. Privacy policy:
 https://www.coinbase.com/legal/privacy.
+
+== Privacy ==
+
+The plugin stores no name, address, email, wallet address, IP address or user agent of its own;
+those stay in WooCommerce's customer and order records and follow WooCommerce's own personal-data
+export and erasure. What the plugin stores is the financial history of each payment and
+subscription: amounts, billing periods, public blockchain identifiers (an authorization id and
+transaction hashes), the store's own payout wallet, and - for subscriptions - the customer's
+recurring authorization, encrypted, which the store needs to refund a payment and the customer to
+revoke it. Native subscriptions live in a table of their own, linked to the customer account by id.
+
+Personal-data requests: the plugin registers an exporter (what each subscription record says) and
+an eraser. Erasure unlinks the subscription from the customer, cancels it so a wallet whose owner
+the store no longer knows is never charged, and keeps the financial rows; deleting the customer's
+WordPress account does the same. Financial records are retained because a payment that happened on a
+public blockchain is not made private by deleting the store's only record of it, and the encrypted
+authorization is what still allows a refund. Uninstalling keeps them too unless the store opts into
+destructive removal.
 
 == Documentation ==
 
@@ -213,6 +233,11 @@ working while new ones use the new key.
 * Test mode on Base Sepolia.
 
 == Upgrade notice ==
+
+= 1.1.0 =
+Adds P2Flux Native Subscriptions (no WooCommerce Subscriptions needed for simple fixed-price
+subscriptions), a USDC-approval setting, re-authorization from My Account, and privacy export and
+erasure for subscription records. The database schema moves to version 2 automatically.
 
 = 1.0.0 =
 First release.

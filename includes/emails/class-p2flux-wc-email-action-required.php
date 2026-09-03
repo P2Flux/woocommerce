@@ -94,16 +94,16 @@ class P2Flux_WC_Email_Action_Required extends WC_Email {
 
 	/** @return string */
 	public function get_content_html() {
-		return wc_get_template_html( $this->template_html, $this->template_args(), '', $this->template_base );
+		return wc_get_template_html( $this->template_html, $this->template_args( false ), '', $this->template_base );
 	}
 
 	/** @return string */
 	public function get_content_plain() {
-		return wc_get_template_html( $this->template_plain, $this->template_args(), '', $this->template_base );
+		return wc_get_template_html( $this->template_plain, $this->template_args( true ), '', $this->template_base );
 	}
 
 	/** @return array */
-	private function template_args() {
+	private function template_args( $plain = false ) {
 		return array(
 			'order'              => $this->object,
 			'subscription'       => $this->subscription,
@@ -112,7 +112,7 @@ class P2Flux_WC_Email_Action_Required extends WC_Email {
 			'email_heading'      => $this->get_heading(),
 			'additional_content' => $this->get_additional_content(),
 			'sent_to_admin'      => false,
-			'plain_text'         => false,
+			'plain_text'         => (bool) $plain,
 			'email'              => $this,
 		);
 	}

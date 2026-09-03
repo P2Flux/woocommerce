@@ -56,6 +56,7 @@ function p2flux_wc_load() {
 			'native-emails',
 			'native-account',
 			'native-admin',
+			'native-privacy',
 			'collection',
 			'auth-history',
 			'intents',
@@ -119,6 +120,7 @@ add_action(
 		P2Flux_WC_Native_Emails::init();
 		P2Flux_WC_Native_Account::init();
 		P2Flux_WC_Native_Admin::init();
+		P2Flux_WC_Native_Privacy::init();
 		P2Flux_WC_Admin::init();
 		P2Flux_WC_Account::init();
 		P2Flux_WC_Lifecycle::init();

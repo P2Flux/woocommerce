@@ -22,10 +22,13 @@ grep -rn "curl_" "$root/includes" "$root/p2flux-for-woocommerce.php" 2>/dev/null
 grep -q "namespace P2FluxWC\\\\Vendor\\\\P2Flux;" "$root/includes/vendor/p2flux/P2FluxClient.php" \
   || note "the vendored SDK is not namespaced for this plugin"
 
-# Syntax, on every file that ships.
+# Syntax, on every file that ships - with the declared minimum PHP when it is installed, so a
+# construct newer than the floor cannot pass on a newer builder.
+lint_php="php"
+command -v php8.1 >/dev/null 2>&1 && lint_php="php8.1"
 while IFS= read -r file; do
-  php -l "$file" >/dev/null || note "syntax error in $file"
-done < <(find "$root/includes" "$root/p2flux-for-woocommerce.php" "$root/uninstall.php" -name '*.php')
+  "$lint_php" -l "$file" >/dev/null || note "syntax error in $file ($lint_php)"
+done < <(find "$root/includes" "$root/p2flux-for-woocommerce.php" "$root/uninstall.php" "$root/templates" -name '*.php')
 
 # Documentation must not teach the wrong thing.
 # The capability prefix must never appear in merchant-facing text (an example that shows one is an
@@ -43,9 +46,11 @@ if [ -d "$tmp/p2flux-for-woocommerce" ]; then
   # that still carries the developer documentation.
   ( cd "$tmp/p2flux-for-woocommerce" || exit 0
     while IFS= read -r pattern; do
-      case "$pattern" in ''|\#*|!*) continue;; esac
+      case "$pattern" in ''|\#*|!*|\*.md) continue;; esac
       rm -rf $pattern
-    done < "$root/.distignore" )
+    done < "$root/.distignore"
+    find . -name '*.md' -type f -delete )
+  find "$tmp/p2flux-for-woocommerce" -name '*.md' | grep -q . && note "markdown files would ship in the package"
   grep -rl "p2flux-test-fixture\|P2FLUX_WC_DEV_SHORT_PERIODS" "$tmp/p2flux-for-woocommerce" 2>/dev/null | grep -v architecture.md | grep -q . && note "the release archive contains the development fixture"
   grep -rn "curl_" "$tmp/p2flux-for-woocommerce" --include='*.php' 2>/dev/null | grep -q . && note "the release archive calls curl"
   # The WooCommerce Subscriptions Core test harness and the library it boots are development-only.

@@ -29,6 +29,7 @@ require __DIR__ . '/../includes/class-p2flux-wc-native-scheduler.php';
 require __DIR__ . '/../includes/class-p2flux-wc-charger.php';
 require __DIR__ . '/../includes/class-p2flux-wc-jobs.php';
 require __DIR__ . '/../includes/class-p2flux-wc-native-account.php';
+require __DIR__ . '/../includes/class-p2flux-wc-native-privacy.php';
 
 $failures = 0;
 $checks   = 0;
@@ -408,6 +409,20 @@ check( 'the first dunning failure is counted', 1 === P2Flux_WC_Collection::attem
 // R2-F16: ALREADY_CHARGED with a hash still goes through recovery, never straight to paid.
 $r = json_decode( wp_json_encode( array( 'status' => 'ALREADY_CHARGED', 'action' => 'SUCCESS', 'ok' => true, 'already_paid' => true, 'txHash' => '0x' . str_repeat( 'aa', 32 ), 'periodIndex' => 3 ) ) );
 check( 'ALREADY_CHARGED with a hash is reconciled, not paid outright', 'reconcile' === P2Flux_WC_Renewal::decide( $r, array() )['outcome'] );
+
+echo "\nprivacy: erasure unlinks the person and keeps the financial history\n";
+list( $sub, $parent, $auth ) = native_signup( 5 );
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( 'b1', 32 ), 'period_index' => 0 ) );
+collect( $sub, $parent->get_id() );
+$GLOBALS['p2flux_test_user_email'] = 'buyer@example.test';
+$result = P2Flux_WC_Native_Privacy::erase( 'buyer@example.test' );
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+check( 'eraser reports removed and retained', ! empty( $result['items_removed'] ) && ! empty( $result['items_retained'] ) && $result['done'] );
+check( 'the subscription is unlinked (user 0) and cancelled, with its authorization history kept', 0 === $sub->get_user_id() && 'cancelled' === $sub->get_status() && null !== P2Flux_WC_Auth_History::get( $sub, $AUTH ) );
+check( 'no job remains for it', 0 === count( p2flux_test_native_jobs( $sub->get_id() ) ) );
+$export = P2Flux_WC_Native_Privacy::export( 'buyer@example.test' );
+$leak = false !== strpos( wp_json_encode( $export ), 'p2s2.' ) || false !== strpos( wp_json_encode( $export ), 'p2fwc1.' );
+check( 'the export carries no capability, encrypted or not', ! $leak && $export['done'] );
 
 echo "\nthe record: whole-row writes survive an interleaved writer\n";
 list( $sub ) = native_signup( 5 );

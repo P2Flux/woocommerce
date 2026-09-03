@@ -3,8 +3,9 @@
 #
 #   dev/build-zip.sh [output-dir]
 #
-# Same filtering as the release check: the working tree, minus everything in .distignore. It runs
-# the release check first, because a package that fails it should not exist in the first place.
+# Same filtering as the release check, from the same source: the committed tree (git archive HEAD),
+# minus everything in .distignore. A dirty working tree refuses to build - a package must contain
+# exactly what the release check inspected, and only what is in git.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,15 +14,22 @@ name="p2flux-for-woocommerce"
 
 bash "$root/dev/release-check.sh"
 
+if [ -n "$(git -C "$root" status --porcelain --untracked-files=no)" ]; then
+  echo "FAIL: the working tree has uncommitted changes; commit them, then build" >&2
+  exit 1
+fi
+
 staging="$(mktemp -d)"
 mkdir -p "$staging/$name"
-tar --exclude-vcs --exclude='./.git' -cf - -C "$root" . | tar -x -C "$staging/$name"
+git -C "$root" archive --format=tar HEAD | tar -x -C "$staging/$name"
 
 ( cd "$staging/$name"
   while IFS= read -r pattern; do
-    case "$pattern" in ''|\#*|!*) continue;; esac
+    case "$pattern" in ''|\#*|!*|\*.md) continue;; esac
     rm -rf $pattern
   done < "$root/.distignore"
+  # Markdown anywhere in the tree is developer documentation; readme.txt is the only prose that ships.
+  find . -name '*.md' -type f -delete
   rm -rf .git .gitignore .distignore )
 
 version="$(grep -m1 '^ \* Version:' "$root/$name.php" | awk '{print $3}')"
