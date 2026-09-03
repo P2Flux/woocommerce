@@ -70,9 +70,13 @@ add_action( 'template_redirect', static function () {
 	if ( ! current_user_can( 'manage_woocommerce' ) ) {
 		wp_die( 'admin only' );
 	}
-	$client = P2Flux_WC_Client::for_environment( P2Flux_WC_Client::TEST );
 	try {
-		$prepared = $client->prepareAllowanceRevoke();
+		// The vendored SDK 0.6.1 has no wrapper for this endpoint; call it through the plugin's transport.
+		$transport = P2Flux_WC_Client::transport();
+		list( $code, $prepared ) = $transport( rtrim( P2Flux_WC_Client::api_url( P2Flux_WC_Client::TEST ), '/' ) . '/v1/allowances/revoke/prepare', array(), 20 );
+		if ( 200 !== $code || empty( $prepared['to'] ) || empty( $prepared['data'] ) ) {
+			throw new \Exception( 'HTTP ' . $code );
+		}
 	} catch ( \Exception $e ) {
 		wp_die( esc_html( 'could not prepare: ' . preg_replace( '/p2[a-z0-9]+\.[A-Za-z0-9_.-]+/', '[redacted]', $e->getMessage() ) ) );
 	}

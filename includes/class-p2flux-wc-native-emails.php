@@ -69,6 +69,11 @@ class P2Flux_WC_Native_Emails {
 		if ( isset( $sent[ $reason ] ) ) {
 			return;
 		}
+		// A period that passes after the customer was already told why it could not be collected
+		// is not news: one email per order for the cause, none for the consequence.
+		if ( 'missed' === $reason && ! empty( $sent ) ) {
+			return;
+		}
 		$sent[ $reason ] = time();
 		$order->update_meta_data( self::NOTIFIED_META, wp_json_encode( $sent ) );
 		$order->save();

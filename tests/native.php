@@ -500,6 +500,23 @@ $parent->paid = true;
 P2Flux_WC_Native_Scheduler::parent_cancelled( $parent->get_id() );
 check( 'the cancelled hook ignores a paid signup order', 'pending' === P2Flux_WC_Native_Subscription::load( $sub->get_id() )->get_status() );
 
+
+echo "\nemails: a period passing after a balance failure sends nothing more for that order\n";
+list( $sub, $parent, $auth ) = native_signup( 5 );
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( 'a7', 32 ), 'period_index' => 0 ) );
+collect( $sub, $parent->get_id() );
+P2Flux_WC_Auth_History::activate( $sub, array_merge( $auth, array( 'start' => time() - 70, 'cap' => P2Flux_WC_Crypto::encrypt( 'p2s2.capability' ) ) ) );
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+$sub->set_timestamp( 'schedule_anchor', time() - 70 ); $sub->set_timestamp( 'next_payment_at', time() - 10 ); $sub->save();
+p2flux_test_respond( '/v1/charges', array( 'error' => 'INSUFFICIENT_BALANCE', 'action' => 'CUSTOMER_ACTION_REQUIRED' ), 400 );
+P2Flux_WC_Native_Scheduler::renewal( $sub->get_id() );
+$sub     = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+$renewal = wc_get_order( $sub->get_related_orders( 'ids' )[1] );
+$first   = json_decode( (string) $renewal->get_meta( '_p2flux_notified' ), true );
+P2Flux_WC_Native_Scheduler::after_missed( $sub, $renewal );
+$again   = json_decode( (string) wc_get_order( $renewal->get_id() )->get_meta( '_p2flux_notified' ), true );
+check( 'the balance failure emailed once', is_array( $first ) && isset( $first['balance'] ) && 1 === count( $first ) );
+check( 'the period passing afterwards adds no second email to that order', $again === $first );
 echo "\n{$checks} checks, {$failures} failures\n";
 if ( $failures ) {
 	exit( 1 );
