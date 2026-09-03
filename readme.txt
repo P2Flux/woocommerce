@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
 WC tested up to: 11.0
-Stable tag: 1.1.0
+Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -126,15 +126,14 @@ Yes, in full, from your own wallet. The order screen has a P2Flux box that prepa
 opens your wallet; WooCommerce records the refund once P2Flux confirms the transfer on chain. The
 refund on chain is the USDC the customer paid; the WooCommerce refund record is the order total in
 your store currency, so on a non-USD store the two figures differ by the conversion applied at
-checkout (recurring products are USD-only, so the two always agree there).
+checkout (recurring products are USD-only, so the two always agree there). WooCommerce's normal
+refund button is not offered, because no server can send money out of your wallet - only you can.
 
 = What does the customer see at checkout? =
 
 They choose P2Flux, place the order, and a small P2Flux window opens from that same click: connect
 a wallet, confirm, done. The order's pay screen stays behind it to show progress, and if a browser
 refuses the window it offers a "Pay with your wallet" button that opens it on demand.
-WooCommerce's normal refund button is not offered, because no server can send money out of your
-wallet - only you can.
 
 = A renewal failed. What now? =
 
@@ -229,28 +228,17 @@ working while new ones use the new key.
 
 == Changelog ==
 
-= 1.1.1 =
-* The wallet window opens from the "Place order" click itself; the pay page hands it the payment without a second click (falls back to the pay button where a browser refuses).
-* Restyled customer subscription pages (badges, cards, one primary action) and the P2Flux Subscriptions admin screen.
-
-= 1.1.0 =
-* P2Flux Native Subscriptions: simple fixed recurring products without WooCommerce Subscriptions.
-* A "USDC approval for subscriptions" setting: unlimited, or a number of billing periods.
-* Re-authorize from My Account after a price change; hard P2Flux-only enforcement for native products.
-
 = 1.0.0 =
-* One-time USDC payments on Base, classic and block checkout.
-* Subscriptions through WooCommerce Subscriptions: authorization, first charge, renewals, dunning.
+* One-time USDC payments on Base, classic and block checkout; the wallet window opens from the "Place order" click.
+* P2Flux Native Subscriptions: simple fixed-price recurring products without WooCommerce Subscriptions.
+* Subscriptions through WooCommerce Subscriptions: authorization, first charge, renewals, dunning, re-authorization after a price change.
+* A "USDC approval for subscriptions" setting: unlimited, or a number of billing periods.
 * Payment recovery when a checkout window dies before the store hears about the payment.
 * Full refunds from the merchant's own wallet, recorded in WooCommerce only after confirmation.
+* Privacy export and erasure for subscription records.
 * Test mode on Base Sepolia.
 
 == Upgrade notice ==
-
-= 1.1.0 =
-Adds P2Flux Native Subscriptions (no WooCommerce Subscriptions needed for simple fixed-price
-subscriptions), a USDC-approval setting, re-authorization from My Account, and privacy export and
-erasure for subscription records. The database schema moves to version 2 automatically.
 
 = 1.0.0 =
 First release.
