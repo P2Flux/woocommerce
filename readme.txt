@@ -1,5 +1,5 @@
 === P2Flux for WooCommerce ===
-Contributors: p2flux
+Contributors: modulout
 Tags: woocommerce, payments, usdc, crypto, subscriptions
 Requires at least: 6.5
 Tested up to: 7.1
@@ -221,10 +221,15 @@ working while new ones use the new key.
 
 == Screenshots ==
 
-1. The payment method at checkout.
-2. Paying from a wallet in the hosted checkout window.
-3. The P2Flux box on an order, with the settlement transaction and the refund control.
-4. Gateway settings, including the test and live environments.
+1. The payment method at checkout: pay with USDC from your own wallet, no account needed.
+2. Placing the order opens the P2Flux window; the pay screen behind it shows progress.
+3. The hosted checkout: the amount, the terms, the network, and the wallets found in the browser.
+4. My Account → USDC subscriptions: every subscription with its status and next payment.
+5. One subscription: payments, wallet authorization, and the customer's own controls.
+6. WooCommerce → P2Flux Subscriptions: a merchant's view of one subscription, with history and actions.
+7. The P2Flux box on an order: settlement transaction, explorer link, and the refund control.
+8. Gateway settings: environment, payout wallet, USDC approval mode, exchange rate.
+9. A simple product turned into a P2Flux Native Subscription with one checkbox and an interval.
 
 == Changelog ==
 
