@@ -42,7 +42,7 @@ class P2Flux_WC_Periods {
 	const CONFLICT = 'conflict';
 
 	const DB_VERSION_OPTION = 'p2flux_wc_db_version';
-	const DB_VERSION        = 1;
+	const DB_VERSION        = 2;
 
 	/**
 	 * Table name.
@@ -88,15 +88,21 @@ class P2Flux_WC_Periods {
 				tx_hash CHAR(66) NULL,
 				units BIGINT UNSIGNED NOT NULL DEFAULT 0,
 				environment VARCHAR(10) NOT NULL DEFAULT '',
+				engine VARCHAR(10) NOT NULL DEFAULT 'wcs',
 				created_at DATETIME NOT NULL,
 				updated_at DATETIME NOT NULL,
 				settled_at DATETIME NULL,
-				PRIMARY KEY (id),
+				PRIMARY KEY  (id),
 				UNIQUE KEY auth_period (auth_id, period_index),
 				KEY order_id (order_id),
 				KEY subscription_id (subscription_id)
 			) {$collate};"
 		);
+
+		// The plugin's own subscriptions, since schema version 2. Financial history; never dropped by an update.
+		if ( class_exists( 'P2Flux_WC_Native_Subscription' ) ) {
+			dbDelta( P2Flux_WC_Native_Subscription::schema() );
+		}
 
 		update_option( self::DB_VERSION_OPTION, self::DB_VERSION, false );
 	}
@@ -145,8 +151,8 @@ class P2Flux_WC_Periods {
 
 		$inserted = $wpdb->query(
 			$wpdb->prepare(
-				'INSERT IGNORE INTO ' . self::table() . ' (auth_id, period_index, subscription_id, order_id, state, units, environment, created_at, updated_at)
-				 VALUES (%s, %d, %d, %d, %s, %d, %s, %s, %s)',
+				'INSERT IGNORE INTO ' . self::table() . ' (auth_id, period_index, subscription_id, order_id, state, units, environment, engine, created_at, updated_at)
+				 VALUES (%s, %d, %d, %d, %s, %d, %s, %s, %s, %s)',
 				$auth_id,
 				$period_index,
 				(int) $claim['subscription_id'],
@@ -154,6 +160,7 @@ class P2Flux_WC_Periods {
 				self::CLAIMED,
 				isset( $claim['units'] ) ? (int) $claim['units'] : 0,
 				isset( $claim['environment'] ) ? (string) $claim['environment'] : '',
+				isset( $claim['engine'] ) ? (string) $claim['engine'] : 'wcs',
 				$now,
 				$now
 			)

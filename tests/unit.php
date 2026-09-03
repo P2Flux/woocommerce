@@ -14,6 +14,7 @@
 
 require __DIR__ . '/shims.php';
 require __DIR__ . '/../includes/class-p2flux-wc-money.php';
+require __DIR__ . '/../includes/class-p2flux-wc-calendar.php';
 require __DIR__ . '/../includes/class-p2flux-wc-crypto.php';
 require __DIR__ . '/../includes/class-p2flux-wc-collection.php';
 require __DIR__ . '/../includes/class-p2flux-wc-renewal.php';
@@ -108,6 +109,44 @@ check( 'a week is exact', 604800 === P2Flux_WC_Money::period_seconds( 'week', 1 
 check( 'intervals multiply', 4838400 === P2Flux_WC_Money::period_seconds( 'month', 2 ) );
 check( 'anything under an hour is refused by the protocol', null === P2Flux_WC_Money::period_seconds( 'minute', 1 ) );
 check( 'and anything over 366 days', null === P2Flux_WC_Money::period_seconds( 'year', 2 ) );
+
+echo "\ncalendar: due dates from the anchor, never from the previous one\n";
+$jan31 = gmmktime( 10, 30, 0, 1, 31, 2027 );
+check( 'daily is exactly 86400 s later', $jan31 + DAY_IN_SECONDS === P2Flux_WC_Calendar::due( $jan31, 'day', 1 ) );
+check( 'weekly is exactly 7 days later', $jan31 + 7 * DAY_IN_SECONDS === P2Flux_WC_Calendar::due( $jan31, 'week', 1 ) );
+check( 'Jan 31 + 1 month is Feb 28 (2027 is not a leap year)', '2027-02-28 10:30:00' === gmdate( 'Y-m-d H:i:s', P2Flux_WC_Calendar::due( $jan31, 'month', 1 ) ) );
+check( 'Jan 31 + 2 months is Mar 31, not Mar 28', '2027-03-31 10:30:00' === gmdate( 'Y-m-d H:i:s', P2Flux_WC_Calendar::due( $jan31, 'month', 2 ) ) );
+check( 'Jan 31 + 3 months is Apr 30', '2027-04-30 10:30:00' === gmdate( 'Y-m-d H:i:s', P2Flux_WC_Calendar::due( $jan31, 'month', 3 ) ) );
+check( 'Jan 31 + 13 months is Feb 29 2028 (leap year)', '2028-02-29 10:30:00' === gmdate( 'Y-m-d H:i:s', P2Flux_WC_Calendar::due( $jan31, 'month', 13 ) ) );
+check( 'Jan 31 + 12 months is Jan 31 next year', '2028-01-31 10:30:00' === gmdate( 'Y-m-d H:i:s', P2Flux_WC_Calendar::due( $jan31, 'month', 12 ) ) );
+$feb29 = gmmktime( 0, 0, 0, 2, 29, 2028 );
+check( 'Feb 29 yearly maps to Feb 28 in a non-leap year', '2029-02-28' === gmdate( 'Y-m-d', P2Flux_WC_Calendar::due( $feb29, 'year', 1 ) ) );
+check( 'and back to Feb 29 in the next leap year', '2032-02-29' === gmdate( 'Y-m-d', P2Flux_WC_Calendar::due( $feb29, 'year', 4 ) ) );
+check( 'time of day survives the month clamp', '23:59:59' === gmdate( 'H:i:s', P2Flux_WC_Calendar::due( gmmktime( 23, 59, 59, 3, 31, 2027 ), 'month', 1 ) ) );
+check( 'a month is never shorter than the 28-day contract period', P2Flux_WC_Calendar::due( $jan31, 'month', 1 ) - $jan31 >= 28 * DAY_IN_SECONDS && P2Flux_WC_Calendar::due( $jan31, 'month', 2 ) - P2Flux_WC_Calendar::due( $jan31, 'month', 1 ) >= 28 * DAY_IN_SECONDS );
+check( 'a year is never shorter than the 365-day contract period', P2Flux_WC_Calendar::due( $feb29, 'year', 1 ) - $feb29 >= 365 * DAY_IN_SECONDS );
+
+echo "\ncalendar: the latest cycle at a moment is exact\n";
+check( 'before the anchor there is no cycle', -1 === P2Flux_WC_Calendar::latest_cycle_at( $jan31, 'month', $jan31 - 1 ) );
+check( 'at the anchor it is cycle 0', 0 === P2Flux_WC_Calendar::latest_cycle_at( $jan31, 'month', $jan31 ) );
+check( 'one second before Feb 28 10:30 it is still cycle 0', 0 === P2Flux_WC_Calendar::latest_cycle_at( $jan31, 'month', P2Flux_WC_Calendar::due( $jan31, 'month', 1 ) - 1 ) );
+check( 'at Feb 28 10:30 it is cycle 1', 1 === P2Flux_WC_Calendar::latest_cycle_at( $jan31, 'month', P2Flux_WC_Calendar::due( $jan31, 'month', 1 ) ) );
+check( 'three months later it is cycle 3', 3 === P2Flux_WC_Calendar::latest_cycle_at( $jan31, 'month', P2Flux_WC_Calendar::due( $jan31, 'month', 3 ) + 5 ) );
+check( 'daily: 100 days later is cycle 100', 100 === P2Flux_WC_Calendar::latest_cycle_at( $jan31, 'day', $jan31 + 100 * DAY_IN_SECONDS + 1 ) );
+check( 'weekly: 20 days later is cycle 2', 2 === P2Flux_WC_Calendar::latest_cycle_at( $jan31, 'week', $jan31 + 20 * DAY_IN_SECONDS ) );
+check( 'yearly: the Feb 29 anchor after 4 years is cycle 4', 4 === P2Flux_WC_Calendar::latest_cycle_at( $feb29, 'year', P2Flux_WC_Calendar::due( $feb29, 'year', 4 ) ) );
+check( 'yearly: one second before that is cycle 3', 3 === P2Flux_WC_Calendar::latest_cycle_at( $feb29, 'year', P2Flux_WC_Calendar::due( $feb29, 'year', 4 ) - 1 ) );
+$ok = true;
+foreach ( array( 'day', 'week', 'month', 'year' ) as $interval ) {
+	for ( $n = 0; $n < 40; $n++ ) {
+		$due = P2Flux_WC_Calendar::due( $jan31, $interval, $n );
+		if ( P2Flux_WC_Calendar::latest_cycle_at( $jan31, $interval, $due ) !== $n || P2Flux_WC_Calendar::latest_cycle_at( $jan31, $interval, $due - 1 ) !== $n - 1 ) {
+			$ok = false;
+		}
+	}
+}
+check( 'latest_cycle_at inverts due() for 40 cycles of every interval', $ok );
+check( 'contract periods: day/week/28 d/365 d', 86400 === P2Flux_WC_Calendar::contract_period( 'day' ) && 604800 === P2Flux_WC_Calendar::contract_period( 'week' ) && 2419200 === P2Flux_WC_Calendar::contract_period( 'month' ) && 31536000 === P2Flux_WC_Calendar::contract_period( 'year' ) );
 
 echo "\ncharge outcomes\n";
 

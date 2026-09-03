@@ -48,6 +48,8 @@ function p2flux_wc_load() {
 			'lock',
 			'periods',
 			'subscriptions',
+			'calendar',
+			'native-subscription',
 			'collection',
 			'auth-history',
 			'intents',
