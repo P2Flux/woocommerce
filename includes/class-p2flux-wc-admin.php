@@ -55,7 +55,7 @@ class P2Flux_WC_Admin {
 	public static function render( $post_or_order ) {
 		$order = $post_or_order instanceof WC_Order ? $post_or_order : wc_get_order( $post_or_order->ID );
 		if ( ! $order || 'p2flux' !== $order->get_payment_method() ) {
-			echo '<p>' . esc_html__( 'This order was not paid with P2Flux.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<div class="p2flux-box"><p class="p2flux-box__note">' . esc_html__( 'This order was not paid with P2Flux.', 'p2flux-for-woocommerce' ) . '</p></div>';
 			return;
 		}
 
@@ -64,18 +64,35 @@ class P2Flux_WC_Admin {
 		$units       = (int) $order->get_meta( '_p2flux_paid_units' );
 		$explorer    = P2Flux_WC_Client::explorer_url( $environment );
 		$refund      = P2Flux_WC_Refunds::state( $order );
+		$live        = P2Flux_WC_Client::LIVE === $environment;
+		$period      = $order->get_meta( '_p2flux_period_index' );
 
-		echo '<p><strong>' . esc_html__( 'Environment', 'p2flux-for-woocommerce' ) . ':</strong> ';
-		echo esc_html( P2Flux_WC_Client::LIVE === $environment ? __( 'Base Mainnet', 'p2flux-for-woocommerce' ) : __( 'Base Sepolia (test)', 'p2flux-for-woocommerce' ) );
-		echo '</p>';
+		echo '<div class="p2flux-box">';
+		echo '<dl class="p2flux-box__rows">';
+
+		echo '<dt>' . esc_html__( 'Network', 'p2flux-for-woocommerce' ) . '</dt><dd>';
+		printf(
+			'<span class="p2flux-box__pill %s">%s</span>',
+			$live ? 'p2flux-box__pill--live' : 'p2flux-box__pill--test',
+			esc_html( $live ? __( 'Base Mainnet', 'p2flux-for-woocommerce' ) : __( 'Base Sepolia · test', 'p2flux-for-woocommerce' ) )
+		);
+		echo '</dd>';
 
 		if ( $units > 0 ) {
-			echo '<p><strong>' . esc_html__( 'Paid', 'p2flux-for-woocommerce' ) . ':</strong> ' . esc_html( P2Flux_WC_Money::display( $units ) ) . ' USDC</p>';
+			echo '<dt>' . esc_html__( 'Paid', 'p2flux-for-woocommerce' ) . '</dt><dd>' . esc_html( P2Flux_WC_Money::display( $units ) ) . ' USDC</dd>';
 		}
+		if ( '' !== (string) $period ) {
+			echo '<dt>' . esc_html__( 'Billing period', 'p2flux-for-woocommerce' ) . '</dt><dd>' . esc_html( (string) (int) $period ) . '</dd>';
+		}
+		if ( P2Flux_WC_Refunds::REFUNDED === $refund['status'] ) {
+			echo '<dt>' . esc_html__( 'Refund', 'p2flux-for-woocommerce' ) . '</dt><dd><span class="p2flux-box__pill p2flux-box__pill--refunded">' . esc_html__( 'Refunded in USDC', 'p2flux-for-woocommerce' ) . '</span></dd>';
+		}
+
+		echo '</dl>';
 
 		if ( '' !== $hash ) {
 			printf(
-				'<p><a href="%s" target="_blank" rel="noopener noreferrer">%s</a></p>',
+				'<a class="p2flux-box__link" href="%s" target="_blank" rel="noopener noreferrer">%s ↗</a>',
 				esc_url( $explorer . '/tx/' . $hash ),
 				esc_html__( 'View the transaction', 'p2flux-for-woocommerce' )
 			);
@@ -84,19 +101,25 @@ class P2Flux_WC_Admin {
 		if ( $order->get_meta( '_p2flux_reconciling' ) ) {
 			// The period was collected; the settlement behind it is not known yet. Until it is, the
 			// order cannot be refunded - a refund starts from the original transaction.
-			echo '<p>' . esc_html__( 'This billing period was collected, but its transaction has not been recovered yet. The order is marked paid once it has been.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<div class="p2flux-box__section">';
+			echo '<p class="p2flux-box__note">' . esc_html__( 'This billing period was collected, but its transaction has not been recovered yet. The order is marked paid once it has been.', 'p2flux-for-woocommerce' ) . '</p>';
 			printf(
-				'<p><button type="button" class="button" id="p2flux-recover" data-order="%d">%s</button></p>',
+				'<p class="p2flux-box__actions"><button type="button" class="button" id="p2flux-recover" data-order="%d">%s</button></p>',
 				(int) $order->get_id(),
 				esc_html__( 'Recover transaction', 'p2flux-for-woocommerce' )
 			);
+			echo '</div>';
 		}
 
 		if ( $order->get_meta( '_p2flux_unexpected_payment' ) ) {
-			echo '<p class="p2flux-warning"><strong>' . esc_html__( 'A payment arrived that does not settle this order. Review the order notes before fulfilling.', 'p2flux-for-woocommerce' ) . '</strong></p>';
+			echo '<p class="p2flux-box__warning">' . esc_html__( 'A payment arrived that does not settle this order. Review the order notes before fulfilling.', 'p2flux-for-woocommerce' ) . '</p>';
+		}
+		if ( $order->get_meta( '_p2flux_period_conflict' ) ) {
+			echo '<p class="p2flux-box__warning">' . esc_html__( 'P2Flux answered about a billing period that belongs to another order. Review both orders before fulfilling.', 'p2flux-for-woocommerce' ) . '</p>';
 		}
 
 		self::render_refund( $order, $refund, $hash );
+		echo '</div>';
 	}
 
 	/**
@@ -108,37 +131,38 @@ class P2Flux_WC_Admin {
 	 * @return void
 	 */
 	private static function render_refund( $order, array $refund, $hash ) {
-		echo '<hr />';
-
 		if ( P2Flux_WC_Refunds::REFUNDED === $refund['status'] ) {
-			echo '<p>' . esc_html__( 'Refunded in USDC.', 'p2flux-for-woocommerce' ) . '</p>';
 			return;
 		}
+
+		echo '<div class="p2flux-box__section">';
 
 		if ( '' === $hash ) {
-			echo '<p>' . esc_html__( 'A refund needs the original transaction, which is not known for this order yet.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<p class="p2flux-box__note">' . esc_html__( 'A refund needs the original transaction, which is not known for this order yet.', 'p2flux-for-woocommerce' ) . '</p></div>';
 			return;
 		}
 
-		echo '<p>' . esc_html__( 'A P2Flux refund is sent from your own wallet, in full. WooCommerce records it once the transfer is confirmed on chain.', 'p2flux-for-woocommerce' ) . '</p>';
+		echo '<p class="p2flux-box__note">' . esc_html__( 'A P2Flux refund is sent from your own wallet, in full. WooCommerce records it once the transfer is confirmed on chain.', 'p2flux-for-woocommerce' ) . '</p>';
 
 		if ( in_array( $refund['status'], array( P2Flux_WC_Refunds::SENT, P2Flux_WC_Refunds::MISMATCH ), true ) ) {
 			// A transfer exists. From here the only safe action is asking about it again - never
 			// offering to send another.
 			printf(
-				'<p><button type="button" class="button" id="p2flux-refund-recheck" data-order="%d">%s</button></p>',
+				'<p class="p2flux-box__actions"><button type="button" class="button" id="p2flux-refund-recheck" data-order="%d">%s</button></p>',
 				(int) $order->get_id(),
 				esc_html__( 'Re-check refund', 'p2flux-for-woocommerce' )
 			);
+			echo '</div>';
 			return;
 		}
 
 		printf(
-			'<p><button type="button" class="button" id="p2flux-refund" data-order="%d">%s</button></p>',
+			'<p class="p2flux-box__actions"><button type="button" class="button button-primary" id="p2flux-refund" data-order="%d">%s</button></p>',
 			(int) $order->get_id(),
 			esc_html__( 'Refund in USDC', 'p2flux-for-woocommerce' )
 		);
-		echo '<p id="p2flux-refund-status" role="status" aria-live="polite"></p>';
+		echo '<p class="p2flux-box__status" id="p2flux-refund-status" role="status" aria-live="polite"></p>';
+		echo '</div>';
 	}
 
 	/**
@@ -156,6 +180,7 @@ class P2Flux_WC_Admin {
 		}
 		unset( $hook );
 
+		wp_enqueue_style( 'p2flux-wc-admin', plugins_url( 'assets/admin.css', P2FLUX_WC_FILE ), array(), P2FLUX_WC_VERSION );
 		wp_enqueue_script( 'p2flux-wc-admin', plugins_url( 'assets/admin.js', P2FLUX_WC_FILE ), array(), P2FLUX_WC_VERSION, true );
 		wp_add_inline_script(
 			'p2flux-wc-admin',

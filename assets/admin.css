@@ -1,0 +1,16 @@
+/* The P2Flux box on the order screen: a small card, not a run of paragraphs. */
+#p2flux_wc_order .inside { padding: 0; margin: 0; }
+.p2flux-box { padding: 12px 14px 14px; font-size: 13px; line-height: 1.5; color: #1d2327; }
+.p2flux-box__rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
+.p2flux-box__rows dt { margin: 0; color: #646970; font-weight: 400; white-space: nowrap; }
+.p2flux-box__rows dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.p2flux-box__pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; background: #f0f0f1; color: #50575e; }
+.p2flux-box__pill--test { background: #fcf3e6; color: #8a5a10; }
+.p2flux-box__pill--live { background: #e7f6ee; color: #1f6b45; }
+.p2flux-box__pill--refunded { background: #f0f0f1; color: #50575e; }
+.p2flux-box__link { display: inline-block; margin-top: 10px; }
+.p2flux-box__section { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid #dcdcde; }
+.p2flux-box__note { margin: 0 0 8px; color: #50575e; }
+.p2flux-box__warning { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid #d63638; background: #fcf0f1; color: #8a1f22; }
+.p2flux-box__actions { margin: 10px 0 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.p2flux-box__status { margin: 8px 0 0; color: #50575e; min-height: 1em; }
