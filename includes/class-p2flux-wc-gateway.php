@@ -643,6 +643,7 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 		$order->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $subscription->get_id() );
 		$order->update_meta_data( P2Flux_WC_Native_Scheduler::CYCLE_META, 0 );
 		$order->save();
+		/* translators: %1$d: native subscription id, %2$d: order id. */
 		$subscription->add_order_note( sprintf( __( 'Native subscription #%1$d created for order #%2$d.', 'p2flux-for-woocommerce' ), $subscription->get_id(), $order->get_id() ) );
 
 		return $subscription;

@@ -148,6 +148,7 @@ class P2Flux_WC_Native_Account {
 			__( 'Next payment', 'p2flux-for-woocommerce' ) => self::next_payment( $subscription ),
 		);
 
+		/* translators: %d: subscription id. */
 		echo '<h2>' . esc_html( sprintf( __( 'Subscription #%d', 'p2flux-for-woocommerce' ), $subscription->get_id() ) ) . '</h2>';
 		echo '<table class="woocommerce-table shop_table"><tbody>';
 		foreach ( $rows as $label => $value ) {

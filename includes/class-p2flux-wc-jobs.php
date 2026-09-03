@@ -220,6 +220,7 @@ class P2Flux_WC_Jobs {
 			// pay: that is how one payment ends up marking the wrong order paid.
 			$order->update_meta_data( '_p2flux_recover_mismatch', $mismatch );
 			$order->save();
+			/* translators: %s: mismatch reason. */
 			self::needs_attention( $order, sprintf( __( 'P2Flux: a recovered settlement did not match this order (%s). Nothing was changed.', 'p2flux-for-woocommerce' ), $mismatch ) );
 			P2Flux_WC_Logger::error( 'recovered settlement mismatch', array( 'order' => $order_id, 'reason' => $mismatch ) );
 			return;

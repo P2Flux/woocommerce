@@ -161,7 +161,7 @@ class P2Flux_WC_Client {
 				 * landed. NETWORK_ERROR is RETRY_LATER, never a decline: treating an unreachable
 				 * API as a failed payment is how a subscription that just paid gets cancelled.
 				 */
-				throw new P2FluxException( 'NETWORK_ERROR', 'RETRY_LATER', array( 'detail' => $response->get_error_message() ) );
+				throw new P2FluxException( 'NETWORK_ERROR', 'RETRY_LATER', array( 'detail' => esc_html( $response->get_error_message() ) ) );
 			}
 
 			$body = json_decode( wp_remote_retrieve_body( $response ), true );

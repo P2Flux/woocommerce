@@ -149,10 +149,12 @@ class P2Flux_WC_Periods {
 		$order_id     = (int) $claim['order_id'];
 		$now          = current_time( 'mysql', true );
 
+		$table    = self::table();
 		$inserted = $wpdb->query(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- the table name is $wpdb->prefix plus a constant.
 			$wpdb->prepare(
-				'INSERT IGNORE INTO ' . self::table() . ' (auth_id, period_index, subscription_id, order_id, state, units, environment, engine, created_at, updated_at)
-				 VALUES (%s, %d, %d, %d, %s, %d, %s, %s, %s, %s)',
+				"INSERT IGNORE INTO {$table} (auth_id, period_index, subscription_id, order_id, state, units, environment, engine, created_at, updated_at)
+				 VALUES (%s, %d, %d, %d, %s, %d, %s, %s, %s, %s)",
 				$auth_id,
 				$period_index,
 				(int) $claim['subscription_id'],

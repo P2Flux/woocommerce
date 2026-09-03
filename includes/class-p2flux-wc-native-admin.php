@@ -138,6 +138,7 @@ class P2Flux_WC_Native_Admin {
 		$state  = P2Flux_WC_Collection::get( $subscription );
 
 		echo '<p><a href="' . esc_url( self::url() ) . '">&larr; ' . esc_html__( 'All subscriptions', 'p2flux-for-woocommerce' ) . '</a></p>';
+		/* translators: %d: subscription id. */
 		echo '<h2>' . esc_html( sprintf( __( 'Subscription #%d', 'p2flux-for-woocommerce' ), $subscription->get_id() ) ) . '</h2>';
 
 		$rows = array(
@@ -151,6 +152,7 @@ class P2Flux_WC_Native_Admin {
 			__( 'Next payment', 'p2flux-for-woocommerce' )     => P2Flux_WC_Native_Account::next_payment( $subscription ),
 			__( 'Cycles resolved', 'p2flux-for-woocommerce' )  => (string) (int) $subscription->get( 'cycle' ),
 			__( 'Missed cycles', 'p2flux-for-woocommerce' )    => (string) (int) $subscription->get( 'missed_cycles' ),
+			/* translators: %1$d: on-chain period index, %2$s: date and time. */
 			__( 'Activation window', 'p2flux-for-woocommerce' ) => $subscription->timestamp( 'activation_deadline' ) ? sprintf( __( 'period %1$d, until %2$s', 'p2flux-for-woocommerce' ), (int) $subscription->get( 'activation_period' ), P2Flux_WC_Native_Account::date( $subscription->timestamp( 'activation_deadline' ) ) ) : '—',
 			__( 'Authorization', 'p2flux-for-woocommerce' )    => $active ? $active['id'] : __( 'none active', 'p2flux-for-woocommerce' ),
 			__( 'Cancelled', 'p2flux-for-woocommerce' )        => P2Flux_WC_Native_Account::date( $subscription->timestamp( 'cancelled_at' ) ),
@@ -193,6 +195,7 @@ class P2Flux_WC_Native_Admin {
 			wp_nonce_field( 'p2flux_native_admin_' . $subscription->get_id() );
 			echo '<input type="hidden" name="action" value="p2flux_native_admin" /><input type="hidden" name="id" value="' . (int) $subscription->get_id() . '" />';
 			if ( $retryable ) {
+				/* translators: %d: renewal order id. */
 				echo '<button class="button" name="do" value="retry">' . esc_html( sprintf( __( 'Retry current payment (order #%d)', 'p2flux-for-woocommerce' ), $retryable ) ) . '</button> ';
 			}
 			if ( $can_cancel ) {
@@ -245,6 +248,7 @@ class P2Flux_WC_Native_Admin {
 			$order_id = self::retryable_order( $subscription );
 			if ( $order_id ) {
 				$outcome = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $subscription ), $order_id );
+				/* translators: %1$s: outcome status, %2$s: protocol code. */
 				$notice  = sprintf( __( 'Retry: %1$s (%2$s).', 'p2flux-for-woocommerce' ), $outcome['status'], $outcome['code'] );
 			} else {
 				$notice = __( 'Nothing can be retried right now.', 'p2flux-for-woocommerce' );

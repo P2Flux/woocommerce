@@ -232,6 +232,7 @@ class P2Flux_WC_Native_Product {
 			return;
 		}
 		delete_transient( $key );
+		/* translators: %s: the reason the product cannot be a subscription. */
 		printf( '<div class="notice notice-error"><p>%s</p></div>', esc_html( sprintf( __( 'P2Flux recurring was not enabled: %s', 'p2flux-for-woocommerce' ), $text ) ) );
 	}
 

@@ -663,6 +663,7 @@ class P2Flux_WC_Native_Scheduler {
 			return null;
 		}
 
+		/* translators: %1$d: native subscription id, %2$d: renewal number. */
 		$order->add_order_note( sprintf( __( 'P2Flux subscription #%1$d, renewal %2$d.', 'p2flux-for-woocommerce' ), $subscription->get_id(), (int) $cycle ) );
 		$order->save();
 
@@ -718,6 +719,7 @@ class P2Flux_WC_Native_Scheduler {
 			$skipped  = $latest - $resolved - ( $eligible ? 1 : 0 );
 
 			if ( $skipped > 0 ) {
+				/* translators: %d: number of billing cycles. */
 				$subscription->add_order_note( sprintf( _n( '%d billing cycle passed while it could not be collected; it will not be collected later.', '%d billing cycles passed while they could not be collected; they will not be collected later.', $skipped, 'p2flux-for-woocommerce' ), $skipped ) );
 				$subscription->set( 'missed_cycles', (int) $subscription->get( 'missed_cycles' ) + $skipped );
 			}

@@ -68,6 +68,7 @@ class P2Flux_WC_Native_Store {
 		$values[] = (int) $id;
 		$values[] = (int) $version;
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sets holds whitelisted column names with placeholders; every value goes through prepare().
 		$rows = $wpdb->query( $wpdb->prepare( "UPDATE {$table} SET " . implode( ', ', $sets ) . ' WHERE id = %d AND meta_version = %d', $values ) );
 
 		return 1 === (int) $rows;
