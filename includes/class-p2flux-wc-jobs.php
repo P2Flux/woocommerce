@@ -298,6 +298,11 @@ class P2Flux_WC_Jobs {
 				self::schedule( 'recover', $order_id, 0 );
 			}
 		}
+
+		// Native subscriptions: signups whose window closed, schedules that lost their job.
+		if ( class_exists( 'P2Flux_WC_Native_Scheduler' ) ) {
+			P2Flux_WC_Native_Scheduler::sweep();
+		}
 	}
 
 	/**

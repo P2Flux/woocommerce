@@ -141,10 +141,7 @@ class P2Flux_WC_Native_Subscription {
 	 * @return self|null
 	 */
 	public static function load( $id ) {
-		global $wpdb;
-
-		$table = self::table();
-		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", (int) $id ), ARRAY_A );
+		$row = P2Flux_WC_Native_Store::row( (int) $id );
 
 		return $row ? new self( $row ) : null;
 	}
@@ -156,35 +153,38 @@ class P2Flux_WC_Native_Subscription {
 	 * @return self|null
 	 */
 	public static function create( array $fields ) {
-		global $wpdb;
-
 		$now = current_time( 'mysql', true );
-		$ok  = $wpdb->insert(
-			self::table(),
+		$id  = P2Flux_WC_Native_Store::insert(
 			array(
 				'user_id'         => (int) $fields['user_id'],
 				'product_id'      => (int) $fields['product_id'],
 				'parent_order_id' => (int) $fields['parent_order_id'],
 				'status'          => self::PENDING,
+				'collection_state' => 'normal',
 				'currency'        => isset( $fields['currency'] ) ? substr( (string) $fields['currency'], 0, 3 ) : 'USD',
 				'amount_units'    => (int) $fields['amount_units'],
 				'amount_display'  => (string) $fields['amount_display'],
 				'product_name'    => isset( $fields['product_name'] ) ? substr( (string) $fields['product_name'], 0, 255 ) : '',
 				'interval_type'   => (string) $fields['interval_type'],
+				'schedule_anchor' => null,
+				'cycle'           => 0,
+				'next_payment_at' => null,
+				'current_renewal_order_id' => 0,
 				'env'             => (string) $fields['env'],
 				'recipient'       => strtolower( (string) $fields['recipient'] ),
+				'active_auth_id'  => null,
+				'activation_period' => null,
+				'activation_deadline' => null,
+				'missed_cycles'   => 0,
 				'meta'            => wp_json_encode( array() ),
+				'meta_version'    => 0,
 				'created_at'      => $now,
 				'updated_at'      => $now,
-			),
-			array( '%d', '%d', '%d', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+				'cancelled_at'    => null,
+			)
 		);
 
-		if ( ! $ok ) {
-			return null;
-		}
-
-		return self::load( (int) $wpdb->insert_id );
+		return $id ? self::load( $id ) : null;
 	}
 
 	/**
@@ -194,12 +194,18 @@ class P2Flux_WC_Native_Subscription {
 	 * @return array<int,self>
 	 */
 	public static function for_user( $user_id ) {
-		global $wpdb;
+		return array_map( static function ( $row ) { return new self( $row ); }, P2Flux_WC_Native_Store::rows_for_user( (int) $user_id ) );
+	}
 
-		$table = self::table();
-		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE user_id = %d ORDER BY id DESC", (int) $user_id ), ARRAY_A );
-
-		return array_map( static function ( $row ) { return new self( $row ); }, $rows ? $rows : array() );
+	/**
+	 * Every subscription, newest first, for the admin list.
+	 *
+	 * @param int $limit  Limit.
+	 * @param int $offset Offset.
+	 * @return array<int,self>
+	 */
+	public static function all( $limit = 50, $offset = 0 ) {
+		return array_map( static function ( $row ) { return new self( $row ); }, P2Flux_WC_Native_Store::rows_all( (int) $limit, (int) $offset ) );
 	}
 
 	/**
@@ -210,20 +216,7 @@ class P2Flux_WC_Native_Subscription {
 	 * @return array<int,self>
 	 */
 	public static function due_before( $before ) {
-		global $wpdb;
-
-		$table = self::table();
-		$rows  = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE ( status IN ('active','on-hold') AND next_payment_at IS NOT NULL AND next_payment_at <= %s )
-				 OR ( status = 'pending' AND activation_deadline IS NOT NULL AND activation_deadline <= %s ) ORDER BY id ASC LIMIT 200",
-				gmdate( 'Y-m-d H:i:s', (int) $before ),
-				gmdate( 'Y-m-d H:i:s', (int) $before )
-			),
-			ARRAY_A
-		);
-
-		return array_map( static function ( $row ) { return new self( $row ); }, $rows ? $rows : array() );
+		return array_map( static function ( $row ) { return new self( $row ); }, P2Flux_WC_Native_Store::rows_due_before( (int) $before ) );
 	}
 
 	/**
@@ -232,39 +225,26 @@ class P2Flux_WC_Native_Subscription {
 	 * @return bool Written.
 	 */
 	public function save() {
-		global $wpdb;
-
 		if ( empty( $this->changes ) && ! $this->meta_dirty ) {
 			return true;
 		}
 
-		foreach ( self::COLUMN_META as $key => $column ) {
-			if ( array_key_exists( $key, $this->meta ) ) {
-				$this->changes[ $column ] = 'amount_units' === $column ? (int) $this->meta[ $key ] : (string) $this->meta[ $key ];
-			}
-		}
-		$collection = isset( $this->meta['_p2flux_collection'] ) ? json_decode( (string) $this->meta['_p2flux_collection'], true ) : null;
-		if ( is_array( $collection ) && isset( $collection['state'] ) ) {
-			$this->changes['collection_state'] = (string) $collection['state'];
-		}
-
-		$table  = self::table();
-		$sets   = array( 'meta = %s', 'meta_version = meta_version + 1', 'updated_at = %s' );
-		$values = array( wp_json_encode( $this->meta ), current_time( 'mysql', true ) );
-		foreach ( $this->changes as $column => $value ) {
-			if ( null === $value ) {
-				$sets[] = "{$column} = NULL";
-				continue;
-			}
-			$sets[]   = "{$column} = " . ( is_int( $value ) ? '%d' : '%s' );
-			$values[] = $value;
-		}
-		$values[] = (int) $this->row['id'];
-		$values[] = (int) $this->row['meta_version'];
-
 		for ( $attempt = 0; $attempt < 3; $attempt++ ) {
-			$rows = $wpdb->query( $wpdb->prepare( "UPDATE {$table} SET " . implode( ', ', $sets ) . ' WHERE id = %d AND meta_version = %d', $values ) );
-			if ( 1 === (int) $rows ) {
+			foreach ( self::COLUMN_META as $key => $column ) {
+				if ( array_key_exists( $key, $this->meta ) ) {
+					$this->changes[ $column ] = 'amount_units' === $column ? (int) $this->meta[ $key ] : (string) $this->meta[ $key ];
+				}
+			}
+			$collection = isset( $this->meta['_p2flux_collection'] ) ? json_decode( (string) $this->meta['_p2flux_collection'], true ) : null;
+			if ( is_array( $collection ) && isset( $collection['state'] ) ) {
+				$this->changes['collection_state'] = (string) $collection['state'];
+			}
+
+			$columns                 = $this->changes;
+			$columns['meta']         = wp_json_encode( $this->meta );
+			$columns['updated_at']   = current_time( 'mysql', true );
+
+			if ( P2Flux_WC_Native_Store::update_cas( (int) $this->row['id'], (int) $this->row['meta_version'], $columns ) ) {
 				$fresh = self::load( (int) $this->row['id'] );
 				if ( $fresh ) {
 					$this->row  = $fresh->row;
@@ -272,6 +252,8 @@ class P2Flux_WC_Native_Subscription {
 				}
 				$this->changes    = array();
 				$this->meta_dirty = false;
+				$this->touched    = array();
+				$this->deleted    = array();
 
 				return true;
 			}
@@ -285,14 +267,13 @@ class P2Flux_WC_Native_Subscription {
 			if ( ! $fresh ) {
 				return false;
 			}
-			$mine                = $this->meta;
-			$this->row           = $fresh->row;
-			$this->meta          = array_merge( $fresh->meta, array_intersect_key( $mine, $this->touched ) );
+			$mine       = $this->meta;
+			$this->row  = array_merge( $fresh->row, array_intersect_key( $this->row, $this->changes ) );
+			$this->meta = array_merge( $fresh->meta, array_intersect_key( $mine, $this->touched ) );
 			foreach ( $this->deleted as $key => $_ ) {
 				unset( $this->meta[ $key ] );
 			}
-			$values[ count( $values ) - 1 ] = (int) $this->row['meta_version'];
-			$values[0]                      = wp_json_encode( $this->meta );
+			$this->row['meta_version'] = $fresh->row['meta_version'];
 		}
 
 		P2Flux_WC_Logger::error( 'native subscription write lost three races', array( 'subscription' => (int) $this->row['id'] ) );

@@ -49,7 +49,10 @@ function p2flux_wc_load() {
 			'periods',
 			'subscriptions',
 			'calendar',
+			'native-store',
 			'native-subscription',
+			'native-scheduler',
+			'native-product',
 			'collection',
 			'auth-history',
 			'intents',
@@ -109,6 +112,7 @@ add_action(
 		 * on `woocommerce_blocks_loaded`, which has already fired by now. */
 		P2Flux_WC_Blocks::register_cart_data();
 		P2Flux_WC_Ajax::init();
+		P2Flux_WC_Native_Product::init();
 		P2Flux_WC_Admin::init();
 		P2Flux_WC_Account::init();
 		P2Flux_WC_Lifecycle::init();
@@ -131,6 +135,9 @@ add_action(
 	static function () {
 		if ( class_exists( 'P2Flux_WC_Jobs' ) ) {
 			P2Flux_WC_Jobs::init();
+		}
+		if ( class_exists( 'P2Flux_WC_Native_Scheduler' ) ) {
+			P2Flux_WC_Native_Scheduler::init();
 		}
 	}
 );

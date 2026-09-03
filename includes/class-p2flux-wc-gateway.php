@@ -44,6 +44,8 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 			'subscription_cancellation',
 			'subscription_suspension',
 			'subscription_reactivation',
+			// The Store API requirement a native subscription cart declares; no other gateway has it.
+			P2Flux_WC_Native_Product::REQUIREMENT,
 		);
 
 		$this->init_form_fields();
@@ -196,6 +198,11 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 	 * @return true|string True, or a reason code.
 	 */
 	public function subscription_cart_supported() {
+		// A native subscription cart has its own rules, and they are the whole answer.
+		if ( class_exists( 'P2Flux_WC_Native_Product' ) && P2Flux_WC_Native_Product::cart_native_product() ) {
+			return null === P2Flux_WC_Native_Product::cart_problem() ? true : 'native';
+		}
+
 		$currency = function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'USD';
 
 		/*
@@ -296,6 +303,16 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 			return array( 'result' => 'failure' );
 		}
 
+		$native = $this->native_product_in( $order );
+		if ( $native && ! $order->get_meta( P2Flux_WC_Subscriptions::NATIVE_META ) ) {
+			$created = $this->create_native_subscription( $order, $native );
+			if ( is_wp_error( $created ) ) {
+				wc_add_notice( $created->get_error_message(), 'error' );
+
+				return array( 'result' => 'failure' );
+			}
+		}
+
 		$prepared = $this->is_subscription_order( $order )
 			? $this->prepare_subscription( $order, $rate )
 			: $this->prepare_one_time( $order, $rate );
@@ -364,6 +381,9 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 		$subscription = P2Flux_WC_Subscriptions::for_order( $order, true );
 		if ( ! $subscription ) {
 			return new WP_Error( 'p2flux_multiple', __( 'P2Flux can pay one subscription per order.', 'p2flux-for-woocommerce' ) );
+		}
+		if ( P2Flux_WC_Subscriptions::is_native( $subscription ) && ! $subscription->has_status( P2Flux_WC_Native_Subscription::PENDING ) ) {
+			return new WP_Error( 'p2flux_native_state', __( 'This subscription signup is no longer open. Please start a new order.', 'p2flux-for-woocommerce' ) );
 		}
 		$units        = P2Flux_WC_Money::to_units( $subscription->get_total(), $rate );
 		$period       = self::billing_period( $subscription );
@@ -540,7 +560,94 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 	 * @return bool
 	 */
 	public static function cart_has_subscription() {
+		if ( class_exists( 'P2Flux_WC_Native_Product' ) && P2Flux_WC_Native_Product::cart_native_product() ) {
+			return true;
+		}
+
 		return class_exists( 'WC_Subscriptions_Cart' ) && WC_Subscriptions_Cart::cart_contains_subscription();
+	}
+
+	/**
+	 * The native subscription product on an order, if the order is such a purchase.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return WC_Product|null
+	 */
+	private function native_product_in( $order ) {
+		if ( ! class_exists( 'P2Flux_WC_Native_Product' ) ) {
+			return null;
+		}
+		foreach ( $order->get_items() as $item ) {
+			$product = $item->get_product();
+			if ( $product && 'yes' === $product->get_meta( P2Flux_WC_Native_Product::RECURRING_META ) ) {
+				return $product;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * The plugin's own subscription record for a native purchase, created pending at checkout.
+	 *
+	 * Every rule that makes the authorization honest is checked again here, on the ORDER rather than
+	 * the cart, because this is the last moment before a setup exists: one line, quantity one, the
+	 * product still eligible, an account to attach it to, the amount inside bounds, and P2Flux as the
+	 * payment method - which is this gateway, but a plugin can call process_payment on anything.
+	 *
+	 * @param WC_Order   $order   Parent order.
+	 * @param WC_Product $product The native product.
+	 * @return P2Flux_WC_Native_Subscription|WP_Error
+	 */
+	private function create_native_subscription( $order, $product ) {
+		if ( 'p2flux' !== $order->get_payment_method() ) {
+			return new WP_Error( 'p2flux_native_gateway', __( 'This subscription can only be paid through P2Flux.', 'p2flux-for-woocommerce' ) );
+		}
+		if ( (int) $order->get_customer_id() < 1 ) {
+			return new WP_Error( 'p2flux_native_account', __( 'A customer account is required for a subscription. Please log in or create an account.', 'p2flux-for-woocommerce' ) );
+		}
+		$problem = P2Flux_WC_Native_Product::product_problem( $product );
+		if ( null !== $problem ) {
+			return new WP_Error( 'p2flux_native_product', P2Flux_WC_Native_Product::describe_problem( $problem ) );
+		}
+		if ( 'USD' !== $order->get_currency() ) {
+			return new WP_Error( 'p2flux_native_currency', __( 'P2Flux Native Subscriptions are sold in US dollars only.', 'p2flux-for-woocommerce' ) );
+		}
+		$items = $order->get_items();
+		if ( 1 !== count( $items ) || 1 !== (int) reset( $items )->get_quantity() || $order->get_coupon_codes() || $order->get_fees() ) {
+			return new WP_Error( 'p2flux_native_cart', __( 'A subscription is bought on its own, one at a time, without coupons or fees.', 'p2flux-for-woocommerce' ) );
+		}
+
+		$units = P2Flux_WC_Money::to_units( $order->get_total(), '1' );
+		if ( null === $units || true !== P2Flux_WC_Money::check_bounds( $units, true )
+			|| $units !== P2Flux_WC_Money::to_units( (string) $product->get_price(), '1' ) ) {
+			return new WP_Error( 'p2flux_native_amount', __( 'This order total does not match the subscription price P2Flux can collect.', 'p2flux-for-woocommerce' ) );
+		}
+
+		$subscription = P2Flux_WC_Native_Subscription::create(
+			array(
+				'user_id'         => $order->get_customer_id(),
+				'product_id'      => $product->get_id(),
+				'parent_order_id' => $order->get_id(),
+				'currency'        => 'USD',
+				'amount_units'    => $units,
+				'amount_display'  => P2Flux_WC_Money::format( $units ),
+				'product_name'    => $product->get_name(),
+				'interval_type'   => P2Flux_WC_Native_Product::interval( $product ),
+				'env'             => P2Flux_WC_Client::current_environment(),
+				'recipient'       => strtolower( (string) $this->get_option( 'recipient' ) ),
+			)
+		);
+		if ( ! $subscription ) {
+			return new WP_Error( 'p2flux_native_store', __( 'The subscription could not be recorded. Please try again.', 'p2flux-for-woocommerce' ) );
+		}
+
+		$order->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $subscription->get_id() );
+		$order->update_meta_data( P2Flux_WC_Native_Scheduler::CYCLE_META, 0 );
+		$order->save();
+		$subscription->add_order_note( sprintf( __( 'Native subscription #%1$d created for order #%2$d.', 'p2flux-for-woocommerce' ), $subscription->get_id(), $order->get_id() ) );
+
+		return $subscription;
 	}
 
 	/**
