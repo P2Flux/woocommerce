@@ -316,11 +316,9 @@ class WC_Order_Item_Product {
  */
 function wc_get_orders( $args ) {
 	$out = array();
-	if ( isset( $args['meta_query'][0]['key'] ) ) {
-		$key   = $args['meta_query'][0]['key'];
-		$value = (string) $args['meta_query'][0]['value'];
+	if ( isset( $args['parent'] ) ) {
 		foreach ( $GLOBALS['p2flux_test_orders'] as $order ) {
-			if ( (string) $order->get_meta( $key ) === $value ) {
+			if ( isset( $order->parent_id ) && (int) $order->parent_id === (int) $args['parent'] ) {
 				$out[] = $order->get_id();
 			}
 		}

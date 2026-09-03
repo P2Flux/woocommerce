@@ -466,24 +466,25 @@ class P2Flux_WC_Native_Subscription {
 	public function get_related_orders( $type = 'ids' ) {
 		unset( $type );
 
+		// Renewal orders are children of the parent order - a relation both order stores can query,
+		// unlike order meta. Refunds are children too, and are not orders of ours.
 		$ids = array( $this->get_parent_id() );
 		if ( function_exists( 'wc_get_orders' ) ) {
 			$found = wc_get_orders(
 				array(
-					'limit'      => 500,
-					'return'     => 'ids',
-					'orderby'    => 'ID',
-					'order'      => 'ASC',
-					'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-						array(
-							'key'   => P2Flux_WC_Subscriptions::NATIVE_META,
-							'value' => (string) $this->get_id(),
-						),
-					),
+					'limit'   => 500,
+					'return'  => 'ids',
+					'orderby' => 'ID',
+					'order'   => 'ASC',
+					'type'    => 'shop_order',
+					'parent'  => $this->get_parent_id(),
 				)
 			);
 			foreach ( (array) $found as $id ) {
-				$ids[] = (int) $id;
+				$order = wc_get_order( $id );
+				if ( $order && (int) $order->get_meta( P2Flux_WC_Subscriptions::NATIVE_META ) === $this->get_id() ) {
+					$ids[] = (int) $id;
+				}
 			}
 		}
 

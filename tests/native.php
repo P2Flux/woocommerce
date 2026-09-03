@@ -285,7 +285,7 @@ check( 'dunning state cleared so a later cycle may collect', 'normal' === P2Flux
 check( 'the missed order stays failed, never paid', 'failed' === wc_get_order( $renewal->get_id() )->get_status() && ! wc_get_order( $renewal->get_id() )->is_paid() );
 $missed_in_a_row = 0;
 for ( $i = 0; $i < 10; $i++ ) {
-	$o = wc_create_order( array( 'status' => 'pending' ) );
+	$o = wc_create_order( array( 'status' => 'pending', 'parent' => $sub->get_parent_id() ) );
 	$o->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $sub->get_id() );
 	$o->update_meta_data( P2Flux_WC_Native_Scheduler::CYCLE_META, 100 + $i );
 	$o->update_meta_data( '_p2flux_charge_attempts', wp_json_encode( array( array( 'period_index' => 1, 'attempted_at' => time() ) ) ) );
@@ -320,7 +320,7 @@ $sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
 check( 'an active subscription may be cancelled', $sub->update_status( 'cancelled', 'customer cancelled' ) );
 P2Flux_WC_Jobs::unschedule_subscription( $sub );
 check( 'its job is dropped', 0 === count( p2flux_test_native_jobs( $sub->get_id() ) ) );
-$o = wc_create_order( array( 'status' => 'pending' ) );
+$o = wc_create_order( array( 'status' => 'pending', 'parent' => $sub->get_parent_id() ) );
 $o->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $sub->get_id() );
 $o->update_meta_data( P2Flux_WC_Native_Scheduler::DUE_META, time() );
 p2flux_test_reset_calls();
