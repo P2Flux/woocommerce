@@ -241,9 +241,13 @@ class P2Flux_WC_Charger {
 			 * renewal's charge has not reached finality, and the API will not open this period until
 			 * it has. Nothing about this order is decided by that. Keep its claim, wait, ask again.
 			 */
-			$earlier = P2Flux_WC_Periods::get( $authorization['id'], $reported );
-			if ( $earlier && (int) $earlier['order_id'] !== (int) $order_id
-				&& in_array( $earlier['state'], array( P2Flux_WC_Periods::CHARGING, P2Flux_WC_Periods::RECONCILING ), true ) ) {
+			$earlier   = P2Flux_WC_Periods::get( $authorization['id'], $reported );
+			$same_tx   = $earlier && isset( $result->txHash ) && '' !== (string) $result->txHash && strtolower( (string) $earlier['tx_hash'] ) === strtolower( (string) $result->txHash );
+			$unsettled = $earlier && in_array( $earlier['state'], array( P2Flux_WC_Periods::CHARGING, P2Flux_WC_Periods::RECONCILING ), true );
+			// ...or one this store already settled by exact recovery, while the API still waits for
+			// its own finality on the same transaction. Same answer: nothing about this order is decided.
+			$settled_here = $earlier && P2Flux_WC_Periods::SETTLED === $earlier['state'] && $same_tx;
+			if ( $earlier && (int) $earlier['order_id'] !== (int) $order_id && ( $unsettled || $settled_here ) ) {
 				P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CLAIMED );
 				P2Flux_WC_Jobs::schedule( 'recharge', $order_id, P2Flux_WC_Renewal::CONFIRMING_DELAY );
 

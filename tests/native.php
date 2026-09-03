@@ -259,6 +259,24 @@ check( 'one charge call for one renewal', 1 === count( p2flux_test_calls( '/v1/c
 P2Flux_WC_Native_Scheduler::renewal( $sub->get_id() );
 check( 'a duplicate job does nothing: no second order, no second charge', count( $sub->get_related_orders() ) === count( P2Flux_WC_Native_Subscription::load( $sub->get_id() )->get_related_orders() ) && 1 === count( p2flux_test_calls( '/v1/charges' ) ) );
 
+// The API can still be waiting for its own finality on a charge this store already settled by
+// exact recovery; asked again in a later period it answers about that earlier period and tx.
+$GLOBALS['p2flux_test_scheduled'] = array();
+P2Flux_WC_Auth_History::activate( $sub, array_merge( $auth, array( 'start' => time() - 130, 'cap' => P2Flux_WC_Crypto::encrypt( 'p2s2.capability' ) ) ) );
+$sub = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+$sub->set_timestamp( 'schedule_anchor', time() - 130 ); $sub->set_timestamp( 'next_payment_at', time() - 10 ); $sub->save();
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CONFIRMING', 'ok' => true, 'action' => 'CONFIRMING', 'tx_hash' => '0x' . str_repeat( 'f6', 32 ), 'period_index' => 1 ) );
+p2flux_test_reset_calls();
+P2Flux_WC_Native_Scheduler::renewal( $sub->get_id() );
+$sub     = P2Flux_WC_Native_Subscription::load( $sub->get_id() );
+$related = $sub->get_related_orders();
+$third   = count( $related ) > 2 ? wc_get_order( $related[2] ) : null;
+$row     = P2Flux_WC_Periods::get( $auth['id'], 2 );
+$jobs    = array_values( array_filter( $GLOBALS['p2flux_test_scheduled'], static function ( $j ) use ( $third ) { return $third && (int) $third->get_id() === (int) $j['order'] && 'p2flux_wc_recharge' === $j['hook']; } ) );
+check( 'an answer about an earlier period this store already settled with the same tx pays nothing and marks no conflict', $third && ! $third->is_paid() && '' === (string) $third->get_meta( '_p2flux_period_conflict' ) );
+check( 'the claim on the current period is kept for this order and a retry is scheduled', $row && (int) $row['order_id'] === (int) $third->get_id() && 'claimed' === $row['state'] && 1 === count( $jobs ) && 'active' === $sub->get_status() );
+check( 'the earlier period stays settled for its own order', 'settled' === P2Flux_WC_Periods::get( $auth['id'], 1 )['state'] && (int) P2Flux_WC_Periods::get( $auth['id'], 1 )['order_id'] === (int) $related[1] );
+
 echo "\nmisses: on hold, never cancelled, never collected later\n";
 list( $sub, $parent, $auth ) = native_signup( 5 );
 p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( '17', 32 ), 'period_index' => 0 ) );
