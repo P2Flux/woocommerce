@@ -376,3 +376,6 @@ if ( ! function_exists( 'get_user_by' ) ) {
 		return false;
 	}
 }
+
+/** @return void */
+function do_action() {}
