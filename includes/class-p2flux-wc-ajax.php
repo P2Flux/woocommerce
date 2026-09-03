@@ -91,7 +91,15 @@ class P2Flux_WC_Ajax {
 
 		$client = P2Flux_WC_Client::for_object( $order );
 
-		foreach ( P2Flux_WC_Intents::recoverable( $order ) as $intent ) {
+		// One recovery pass per order every few seconds, over the newest few intents: the order
+		// key authorizes this call, and it should not be a lever on the merchant's API quota.
+		$cooldown = 'p2flux_wc_check_' . $order->get_id();
+		if ( get_transient( $cooldown ) ) {
+			wp_send_json_success( array( 'status' => 'not_found' ) );
+		}
+		set_transient( $cooldown, 1, 10 );
+
+		foreach ( array_slice( array_reverse( P2Flux_WC_Intents::recoverable( $order ) ), 0, 5 ) as $intent ) {
 			try {
 				$found = $client->recoverPayment( $intent['intent'] );
 			} catch ( \Exception $e ) {

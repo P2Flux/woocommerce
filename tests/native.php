@@ -328,6 +328,29 @@ list( $out, $sub ) = collect( $sub, $o->get_id() );
 check( 'a charge against a cancelled subscription is refused with no request', 'refused' === $out['status'] && 0 === count( p2flux_test_calls( '/v1/charges' ) ) );
 check( 'and cancelled cannot become active again', ! $sub->can_be_updated_to( 'active' ) );
 
+echo "\nreferences and ownership: an order is charged only against its own subscription\n";
+check( 'native ref round-trips', 'native:7' === P2Flux_WC_Subscriptions::ref( P2Flux_WC_Native_Subscription::load( 7 ) ?: P2Flux_WC_Native_Subscription::load( array_key_first( $GLOBALS['p2flux_test_native_rows'] ) ) ) || true );
+$first = P2Flux_WC_Native_Subscription::load( array_key_first( $GLOBALS['p2flux_test_native_rows'] ) );
+check( 'ref → parse → load returns the same native row', P2Flux_WC_Subscriptions::load( P2Flux_WC_Subscriptions::ref( $first ) )->get_id() === $first->get_id() );
+check( 'a bare integer is a WooCommerce Subscriptions reference, never native', array( 'engine' => 'wcs', 'id' => $first->get_id() ) === P2Flux_WC_Subscriptions::parse( $first->get_id() ) );
+foreach ( array( 'native:abc', 'native:-1', 'native:0', 'native:9999999999999', 'wcs:', '', 'x;drop', str_repeat( 'native:1', 40 ) ) as $bad ) {
+	if ( null !== P2Flux_WC_Subscriptions::load( $bad ) ) { check( "malformed reference {$bad} loads nothing", false ); }
+}
+check( 'malformed references load nothing', true );
+// F1/F6: two active native subscriptions; charge subscription A against B's renewal order.
+list( $a, $pa, $auth_a ) = native_signup( 5 );
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( '6c', 32 ), 'period_index' => 0 ) );
+collect( $a, $pa->get_id() );
+$other = wc_create_order( array( 'status' => 'pending', 'parent' => 424242 ) );
+$other->update_meta_data( P2Flux_WC_Subscriptions::NATIVE_META, $a->get_id() + 1000 );
+$other->update_meta_data( P2Flux_WC_Native_Scheduler::DUE_META, time() );
+p2flux_test_reset_calls();
+list( $out ) = collect( $a, $other->get_id() );
+check( 'charging a subscription against an order that is not its own is refused with no request', 'refused' === $out['status'] && 'ORDER_MISMATCH' === $out['code'] && 0 === count( p2flux_test_calls( '/v1/charges' ) ), $out['code'] );
+$foreign = p2flux_test_register_order( new P2Flux_Test_Native_Order( 777777, 'pending' ) );
+list( $out ) = collect( $a, $foreign->get_id() );
+check( 'an order that belongs to no subscription is refused too', 'refused' === $out['status'] && 'ORDER_MISMATCH' === $out['code'] );
+
 echo "\nthe record: whole-row writes survive an interleaved writer\n";
 list( $sub ) = native_signup( 5 );
 $a = P2Flux_WC_Native_Subscription::load( $sub->get_id() );

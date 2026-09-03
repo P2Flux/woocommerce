@@ -79,6 +79,15 @@ class P2Flux_WC_Charger {
 			return self::refused( 'GONE', 'The subscription or order no longer exists.' );
 		}
 
+		// The pair has to be a pair: an order is charged against the subscription it belongs to,
+		// whichever engine owns it, and never against one a caller merely named.
+		$owner = P2Flux_WC_Subscriptions::for_order( $order );
+		if ( ! $owner || P2Flux_WC_Subscriptions::ref( $owner ) !== P2Flux_WC_Subscriptions::ref( $subscription ) ) {
+			P2Flux_WC_Logger::error( 'charge refused: order does not belong to the subscription', array( 'order' => $order_id, 'subscription' => P2Flux_WC_Subscriptions::ref( $subscription ) ) );
+
+			return self::refused( 'ORDER_MISMATCH', 'This order does not belong to that subscription.' );
+		}
+
 		// Already paid, by us or by the customer through the manual fallback. Nothing to do, and
 		// nothing to schedule: this is the ordinary end of a retry ladder, not a failure.
 		if ( $order->is_paid() || $order->get_meta( '_p2flux_manual_paid' ) ) {

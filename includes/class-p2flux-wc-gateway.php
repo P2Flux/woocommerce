@@ -547,11 +547,8 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 	 * @return bool
 	 */
 	private function is_subscription_order( $order ) {
-		if ( $order->get_meta( P2Flux_WC_Subscriptions::NATIVE_META ) ) {
-			return true;
-		}
-
-		return function_exists( 'wcs_order_contains_subscription' ) && wcs_order_contains_subscription( $order, 'parent' );
+		// A renewal order paid by hand is an ordinary one-time payment; only the parent is a signup.
+		return null !== P2Flux_WC_Subscriptions::for_order( $order, true );
 	}
 
 	/**

@@ -185,7 +185,7 @@ class P2Flux_WC_Native_Account {
 			printf(
 				'<p><button type="button" class="button" id="p2flux-native-cancel" data-subscription="%s" data-nonce="%s" data-url="%s">%s</button></p><p id="p2flux-native-cancel-status" role="status" aria-live="polite"></p>',
 				esc_attr( P2Flux_WC_Subscriptions::ref( $subscription ) ),
-				esc_attr( wp_create_nonce( 'p2flux_wc' ) ),
+				esc_attr( wp_create_nonce( 'p2flux_wc_account' ) ),
 				esc_url( WC_AJAX::get_endpoint( 'p2flux_native_cancel' ) ),
 				esc_html__( 'Cancel subscription', 'p2flux-for-woocommerce' )
 			);
@@ -222,7 +222,7 @@ class P2Flux_WC_Native_Account {
 	 * @return void
 	 */
 	public static function cancel() {
-		check_ajax_referer( 'p2flux_wc', 'nonce' );
+		check_ajax_referer( 'p2flux_wc_account', 'nonce' );
 
 		$ref          = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
 		$subscription = P2Flux_WC_Subscriptions::load( $ref );

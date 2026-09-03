@@ -57,7 +57,7 @@ class P2Flux_WC_Account {
 			'window.p2fluxWcAccount = ' . wp_json_encode(
 				array(
 					'subscription' => P2Flux_WC_Subscriptions::ref( $subscription ),
-					'nonce'        => wp_create_nonce( 'p2flux_wc' ),
+					'nonce'        => wp_create_nonce( 'p2flux_wc_account' ),
 					'checkout'     => P2Flux_WC_Client::checkout_url( isset( $authorization['environment'] ) ? $authorization['environment'] : P2Flux_WC_Client::current_environment() ),
 					'ajax'         => array(
 						'restore' => WC_AJAX::get_endpoint( 'p2flux_restore' ),
@@ -223,7 +223,7 @@ class P2Flux_WC_Account {
 	 * @return void
 	 */
 	public static function reauthorized() {
-		$subscription = self::authorized_subscription();
+		$subscription = self::authorized_subscription( true );
 		$capability   = isset( $_POST['subscription_capability'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription_capability'] ) ) : '';
 		$collection   = P2Flux_WC_Collection::get( $subscription );
 		$order_id     = (int) $collection['renewal_order_id'];
@@ -244,7 +244,7 @@ class P2Flux_WC_Account {
 			wp_send_json_success( array( 'status' => 'finalized', 'message' => __( 'Thank you - the new terms are authorized.', 'p2flux-for-woocommerce' ) ) );
 		}
 
-		$outcome = P2Flux_WC_Charger::collect( $subscription->get_id(), $order_id );
+		$outcome = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $subscription ), $order_id );
 
 		wp_send_json_success(
 			array(
@@ -272,7 +272,7 @@ class P2Flux_WC_Account {
 			wp_send_json_error( array( 'message' => __( 'There is no outstanding payment for this subscription.', 'p2flux-for-woocommerce' ) ), 400 );
 		}
 
-		$outcome = P2Flux_WC_Charger::collect( $subscription->get_id(), $order_id );
+		$outcome = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $subscription ), $order_id );
 
 		wp_send_json_success(
 			array(
@@ -323,14 +323,21 @@ class P2Flux_WC_Account {
 		$authorization = P2Flux_WC_Auth_History::active( $subscription );
 		$hash          = isset( $_POST['tx_hash'] ) ? sanitize_text_field( wp_unslash( $_POST['tx_hash'] ) ) : '';
 
-		if ( $authorization ) {
+		/*
+		 * The browser says the wallet revoked. That is a claim; the chain is the fact. Ask P2Flux
+		 * whether the authorization is revoked before writing an irreversible "revoked" on the
+		 * record. If it is not (yet), the customer still gets what they asked for - collection
+		 * stops - recorded as a cancellation, and the record can be marked revoked later.
+		 */
+		$on_chain = self::revoked_on_chain( $subscription, $authorization );
+		if ( $authorization && $on_chain ) {
 			P2Flux_WC_Auth_History::mark( $subscription, $authorization['id'], P2Flux_WC_Auth_History::REVOKED, 'customer revoked' );
 		}
 
-		P2Flux_WC_Collection::set( $subscription, P2Flux_WC_Collection::CANCELLED, array( 'reason' => 'revoked' ) );
+		P2Flux_WC_Collection::set( $subscription, P2Flux_WC_Collection::CANCELLED, array( 'reason' => $on_chain ? 'revoked' : 'cancelled' ) );
 		P2Flux_WC_Jobs::unschedule_subscription( $subscription );
 
-		if ( '' !== $hash && preg_match( '/^0x[0-9a-fA-F]{64}$/', $hash ) ) {
+		if ( $on_chain && '' !== $hash && preg_match( '/^0x[0-9a-fA-F]{64}$/', $hash ) ) {
 			$subscription->update_meta_data( '_p2flux_revoked_tx', $hash );
 		}
 
@@ -339,7 +346,33 @@ class P2Flux_WC_Account {
 		}
 		$subscription->save();
 
-		wp_send_json_success( array( 'status' => 'revoked' ) );
+		wp_send_json_success( array( 'status' => $on_chain ? 'revoked' : 'cancelled' ) );
+	}
+
+	/**
+	 * Is this authorization revoked on chain, according to P2Flux?
+	 *
+	 * @param object     $subscription  Subscription.
+	 * @param array|null $authorization Active authorization.
+	 * @return bool
+	 */
+	private static function revoked_on_chain( $subscription, $authorization ) {
+		if ( ! $authorization ) {
+			return false;
+		}
+		$capability = P2Flux_WC_Auth_History::capability( $subscription, $authorization['id'] );
+		if ( null === $capability ) {
+			return false;
+		}
+		try {
+			$status = P2Flux_WC_Client::for_environment( $authorization['environment'] )->status( $capability );
+		} catch ( \Exception $e ) {
+			return false;
+		} finally {
+			unset( $capability );
+		}
+
+		return ! empty( $status['revoked'] );
 	}
 
 	/**
@@ -348,7 +381,7 @@ class P2Flux_WC_Account {
 	 * @return WC_Subscription
 	 */
 	private static function authorized_subscription( $collecting = false ) {
-		check_ajax_referer( 'p2flux_wc', 'nonce' );
+		check_ajax_referer( 'p2flux_wc_account', 'nonce' );
 
 		$ref          = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
 		$subscription = '' !== $ref ? P2Flux_WC_Subscriptions::load( $ref ) : null;
