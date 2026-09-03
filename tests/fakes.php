@@ -614,9 +614,28 @@ function as_schedule_single_action( $timestamp, $hook, $args = array(), $group =
 		'hook'  => $hook,
 		'order' => isset( $args[0] ) ? (int) $args[0] : 0,
 		'delay' => max( 0, $timestamp - time() ),
+		'time'  => (int) $timestamp,
 	);
 
 	return count( $GLOBALS['p2flux_test_scheduled'] );
+}
+
+/**
+ * @param string $hook  Hook.
+ * @param array  $args  Args.
+ * @param string $group Group.
+ * @return int|false Timestamp of the pending action, or false.
+ */
+function as_next_scheduled_action( $hook, $args = array(), $group = '' ) {
+	unset( $group );
+	$next = false;
+	foreach ( $GLOBALS['p2flux_test_scheduled'] as $job ) {
+		if ( $job['hook'] === $hook && ( empty( $args ) || (int) $job['order'] === (int) $args[0] ) ) {
+			$next = false === $next ? $job['time'] : min( $next, $job['time'] );
+		}
+	}
+
+	return $next;
 }
 
 /**
