@@ -3,7 +3,7 @@
  * Plugin Name:       P2Flux for WooCommerce
  * Plugin URI:        https://p2flux.com/docs/
  * Description:       Accept USDC on Base directly to your own wallet, including subscriptions. Non-custodial: payments go from the customer's wallet to yours.
- * Version:           1.1.0
+ * Version:           1.1.1
  * Requires at least: 6.5
  * Requires PHP:      8.1
  * Requires Plugins:  woocommerce
@@ -20,7 +20,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'P2FLUX_WC_VERSION', '1.1.0' );
+define( 'P2FLUX_WC_VERSION', '1.1.1' );
 define( 'P2FLUX_WC_FILE', __FILE__ );
 
 /**
@@ -116,6 +116,7 @@ add_action(
 		 * on `woocommerce_blocks_loaded`, which has already fired by now. */
 		P2Flux_WC_Blocks::register_cart_data();
 		P2Flux_WC_Ajax::init();
+		add_action( 'wp_enqueue_scripts', array( 'P2Flux_WC_Checkout_Page', 'handoff' ) );
 		P2Flux_WC_Native_Product::init();
 		P2Flux_WC_Native_Emails::init();
 		P2Flux_WC_Native_Account::init();

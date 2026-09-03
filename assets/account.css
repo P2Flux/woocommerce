@@ -1,0 +1,248 @@
+/*
+ * The customer's subscription pages (My Account): the USDC subscriptions list and detail, and the
+ * "Wallet authorization" box under a WooCommerce Subscriptions subscription.
+ *
+ * Scoped under .p2flux-account so a theme's headings, tables and buttons keep their own look around
+ * it. The palette is the pay card's, so a customer sees one product from checkout to account.
+ */
+.p2flux-account {
+	--p2flux-ink: #0c1224;
+	--p2flux-muted: #4a5063;
+	--p2flux-line: #e6e9f0;
+	--p2flux-brand: #4636e3;
+	--p2flux-brand-dark: #3a2cc4;
+
+	color: var(--p2flux-ink);
+	line-height: 1.6;
+}
+
+/* A section: one subject, one card. */
+.p2flux-card {
+	margin: 0 0 1.25rem;
+	padding: 1.25rem 1.4rem;
+	border: 1px solid var(--p2flux-line);
+	border-radius: 12px;
+	background: #fff;
+}
+
+.p2flux-card__head {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.6rem 0.8rem;
+	margin: 0 0 0.9rem;
+}
+
+.p2flux-card__head h2,
+.p2flux-card__head h3 {
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.p2flux-card__head .p2flux-badge {
+	margin-left: auto;
+}
+
+/* Label / value rows. */
+.p2flux-kv {
+	display: grid;
+	grid-template-columns: minmax(7rem, auto) 1fr;
+	gap: 0.45rem 1.25rem;
+	margin: 0;
+	font-size: 15px;
+}
+
+.p2flux-kv dt {
+	margin: 0;
+	color: var(--p2flux-muted);
+	font-weight: 400;
+}
+
+.p2flux-kv dd {
+	margin: 0;
+	font-weight: 500;
+	overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+	.p2flux-kv {
+		grid-template-columns: 1fr;
+		gap: 0.15rem;
+	}
+
+	.p2flux-kv dd {
+		margin-bottom: 0.6rem;
+	}
+}
+
+/* Status badges: same words as the tables, one glance. */
+.p2flux-badge {
+	display: inline-block;
+	padding: 0.15rem 0.6rem;
+	border-radius: 999px;
+	font-size: 11.5px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	line-height: 1.6;
+	background: #f0f0f3;
+	color: #50575e;
+	white-space: nowrap;
+}
+
+.p2flux-badge--active { background: #e7f6ee; color: #1f6b45; }
+.p2flux-badge--on-hold { background: #fff4e0; color: #8a5a00; }
+.p2flux-badge--pending { background: #eef2ff; color: #3b2fb8; }
+.p2flux-badge--cancelled,
+.p2flux-badge--expired { background: #f0f0f3; color: #50575e; }
+.p2flux-badge--revoked { background: #fdf3f3; color: #9b2c2c; }
+.p2flux-badge--test { background: #fcf3e6; color: #8a5a10; }
+
+/* Copy that explains an action, muted, close to the action it explains. */
+.p2flux-note {
+	margin: 0 0 0.9rem;
+	font-size: 14px;
+	color: var(--p2flux-muted);
+}
+
+.p2flux-note:last-child {
+	margin-bottom: 0;
+}
+
+/* Actions: one primary, the rest quiet. Two primaries side by side is how somebody pays twice. */
+.p2flux-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem;
+	margin: 0 0 0.6rem;
+}
+
+.p2flux-account .p2flux-btn,
+.p2flux-account .button.p2flux-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-height: 44px;
+	padding: 0.7rem 1.3rem;
+	border: 1px solid var(--p2flux-brand);
+	border-radius: 10px;
+	background: var(--p2flux-brand);
+	color: #fff;
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.2;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+
+.p2flux-account .p2flux-btn:hover,
+.p2flux-account .button.p2flux-btn:hover {
+	background: var(--p2flux-brand-dark);
+	border-color: var(--p2flux-brand-dark);
+	color: #fff;
+}
+
+.p2flux-account .p2flux-btn:active {
+	transform: translateY(1px);
+}
+
+.p2flux-account .p2flux-btn:focus-visible {
+	outline: 2px solid var(--p2flux-brand);
+	outline-offset: 3px;
+}
+
+.p2flux-account .p2flux-btn[disabled],
+.p2flux-account .p2flux-btn[aria-busy="true"] {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.p2flux-account .p2flux-btn--quiet,
+.p2flux-account .button.p2flux-btn--quiet {
+	background: #fff;
+	color: var(--p2flux-ink);
+	border-color: var(--p2flux-line);
+	font-weight: 500;
+}
+
+.p2flux-account .p2flux-btn--quiet:hover,
+.p2flux-account .button.p2flux-btn--quiet:hover {
+	background: #f7f7fa;
+	color: var(--p2flux-ink);
+	border-color: #c9cdd8;
+}
+
+.p2flux-account .p2flux-btn--danger,
+.p2flux-account .button.p2flux-btn--danger {
+	background: #fff;
+	color: #9b2c2c;
+	border-color: #ecc8c8;
+	font-weight: 500;
+}
+
+.p2flux-account .p2flux-btn--danger:hover,
+.p2flux-account .button.p2flux-btn--danger:hover {
+	background: #fdf3f3;
+	color: #9b2c2c;
+	border-color: #d9a1a1;
+}
+
+.p2flux-account .p2flux-btn--small,
+.p2flux-account .button.p2flux-btn--small {
+	min-height: 36px;
+	padding: 0.4rem 0.9rem;
+	font-size: 14px;
+}
+
+@media (max-width: 480px) {
+	.p2flux-account .p2flux-btn:not(.p2flux-btn--small) {
+		width: 100%;
+	}
+}
+
+/* The status line: only speaks when there is something to say. */
+.p2flux-status {
+	margin: 0.6rem 0 0;
+	padding: 0.7rem 0.9rem;
+	border-radius: 8px;
+	background: #f7f9fc;
+	font-size: 14px;
+	color: var(--p2flux-muted);
+}
+
+.p2flux-status:empty {
+	display: none;
+}
+
+/* Tables keep WooCommerce's shop_table; only the bits it leaves ragged. */
+.p2flux-account .shop_table td .p2flux-badge {
+	vertical-align: middle;
+}
+
+.p2flux-account .shop_table .p2flux-cell--actions {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.p2flux-account .shop_table .p2flux-cell--muted {
+	color: var(--p2flux-muted);
+}
+
+@media (max-width: 768px) {
+	.p2flux-account .shop_table_responsive .p2flux-cell--actions {
+		text-align: left;
+	}
+}
+
+.p2flux-account .p2flux-empty {
+	padding: 1.5rem;
+	border: 1px dashed var(--p2flux-line);
+	border-radius: 12px;
+	color: var(--p2flux-muted);
+	text-align: center;
+}

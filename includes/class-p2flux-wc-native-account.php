@@ -83,20 +83,32 @@ class P2Flux_WC_Native_Account {
 			return;
 		}
 
+		P2Flux_WC_Account::enqueue_style();
+		echo '<div class="p2flux-account">';
+
 		$id = absint( $value );
 		if ( $id ) {
 			$subscription = P2Flux_WC_Native_Subscription::load( $id );
 			if ( $subscription && $subscription->get_user_id() === $user_id ) {
 				self::detail( $subscription );
-
-				return;
+			} else {
+				echo '<p class="p2flux-empty">' . esc_html__( 'That subscription was not found.', 'p2flux-for-woocommerce' ) . '</p>';
 			}
-			echo '<p>' . esc_html__( 'That subscription was not found.', 'p2flux-for-woocommerce' ) . '</p>';
-
-			return;
+		} else {
+			self::listing( P2Flux_WC_Native_Subscription::for_user( $user_id ) );
 		}
 
-		self::listing( P2Flux_WC_Native_Subscription::for_user( $user_id ) );
+		echo '</div>';
+	}
+
+	/**
+	 * The status badge for a subscription.
+	 *
+	 * @param P2Flux_WC_Native_Subscription $subscription Subscription.
+	 * @return string HTML.
+	 */
+	public static function badge( $subscription ) {
+		return P2Flux_WC_Account::badge( $subscription->get_status(), $subscription->status_label() );
 	}
 
 	/**
@@ -107,7 +119,7 @@ class P2Flux_WC_Native_Account {
 	 */
 	private static function listing( array $subscriptions ) {
 		if ( empty( $subscriptions ) ) {
-			echo '<p>' . esc_html__( 'You have no USDC subscriptions.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<p class="p2flux-empty">' . esc_html__( 'You have no USDC subscriptions.', 'p2flux-for-woocommerce' ) . '</p>';
 
 			return;
 		}
@@ -118,19 +130,30 @@ class P2Flux_WC_Native_Account {
 		}
 		echo '</tr></thead><tbody>';
 		foreach ( $subscriptions as $subscription ) {
-			$url = wc_get_account_endpoint_url( self::ENDPOINT ) . $subscription->get_id() . '/';
-			if ( '' === get_option( 'permalink_structure' ) ) {
-				$url = add_query_arg( self::ENDPOINT, $subscription->get_id(), wc_get_page_permalink( 'myaccount' ) );
-			}
+			$url = self::url( $subscription );
 			echo '<tr>';
-			echo '<td data-title="' . esc_attr__( 'Subscription', 'p2flux-for-woocommerce' ) . '"><a href="' . esc_url( $url ) . '">#' . (int) $subscription->get_id() . '</a> ' . esc_html( (string) $subscription->get( 'product_name' ) ) . '</td>';
+			echo '<td data-title="' . esc_attr__( 'Subscription', 'p2flux-for-woocommerce' ) . '"><a href="' . esc_url( $url ) . '"><strong>#' . (int) $subscription->get_id() . '</strong></a> <span class="p2flux-cell--muted">' . esc_html( (string) $subscription->get( 'product_name' ) ) . '</span></td>';
 			echo '<td data-title="' . esc_attr__( 'Amount', 'p2flux-for-woocommerce' ) . '">' . esc_html( self::amount( $subscription ) ) . '</td>';
-			echo '<td data-title="' . esc_attr__( 'Status', 'p2flux-for-woocommerce' ) . '">' . esc_html( $subscription->status_label() ) . '</td>';
+			echo '<td data-title="' . esc_attr__( 'Status', 'p2flux-for-woocommerce' ) . '">' . self::badge( $subscription ) . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
 			echo '<td data-title="' . esc_attr__( 'Next payment', 'p2flux-for-woocommerce' ) . '">' . esc_html( self::next_payment( $subscription ) ) . '</td>';
-			echo '<td><a class="woocommerce-button button" href="' . esc_url( $url ) . '">' . esc_html__( 'View', 'p2flux-for-woocommerce' ) . '</a></td>';
+			echo '<td class="p2flux-cell--actions"><a class="woocommerce-button button p2flux-btn p2flux-btn--quiet p2flux-btn--small" href="' . esc_url( $url ) . '">' . esc_html__( 'View', 'p2flux-for-woocommerce' ) . '</a></td>';
 			echo '</tr>';
 		}
 		echo '</tbody></table>';
+	}
+
+	/**
+	 * The detail page of a subscription, whatever the permalink setting.
+	 *
+	 * @param P2Flux_WC_Native_Subscription $subscription Subscription.
+	 * @return string
+	 */
+	public static function url( $subscription ) {
+		if ( '' === get_option( 'permalink_structure' ) ) {
+			return add_query_arg( self::ENDPOINT, $subscription->get_id(), wc_get_page_permalink( 'myaccount' ) );
+		}
+
+		return wc_get_account_endpoint_url( self::ENDPOINT ) . $subscription->get_id() . '/';
 	}
 
 	/**
@@ -148,46 +171,53 @@ class P2Flux_WC_Native_Account {
 			__( 'Next payment', 'p2flux-for-woocommerce' ) => self::next_payment( $subscription ),
 		);
 
-		/* translators: %d: subscription id. */
-		echo '<h2>' . esc_html( sprintf( __( 'Subscription #%d', 'p2flux-for-woocommerce' ), $subscription->get_id() ) ) . '</h2>';
-		echo '<table class="woocommerce-table shop_table"><tbody>';
-		foreach ( $rows as $label => $value ) {
-			echo '<tr><th>' . esc_html( $label ) . '</th><td>' . esc_html( $value ) . '</td></tr>';
+		unset( $rows[ __( 'Status', 'p2flux-for-woocommerce' ) ] );
+		if ( P2Flux_WC_Client::TEST === (string) $subscription->get( 'env' ) ) {
+			$rows[ __( 'Network', 'p2flux-for-woocommerce' ) ] = __( 'Base Sepolia (test)', 'p2flux-for-woocommerce' );
 		}
-		echo '</tbody></table>';
 
+		echo '<div class="p2flux-card"><div class="p2flux-card__head">';
+		/* translators: %d: subscription id. */
+		echo '<h2>' . esc_html( sprintf( __( 'Subscription #%d', 'p2flux-for-woocommerce' ), $subscription->get_id() ) ) . '</h2>' . self::badge( $subscription ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
+		echo '</div><dl class="p2flux-kv">';
+		foreach ( $rows as $label => $value ) {
+			echo '<dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd>';
+		}
+		echo '</dl>';
 		self::status_note( $subscription );
+		echo '</div>';
 
 		// Orders: the signup and every renewal.
-		echo '<h3>' . esc_html__( 'Payments', 'p2flux-for-woocommerce' ) . '</h3>';
+		echo '<div class="p2flux-card"><div class="p2flux-card__head"><h3>' . esc_html__( 'Payments', 'p2flux-for-woocommerce' ) . '</h3></div>';
 		echo '<table class="woocommerce-orders-table shop_table shop_table_responsive"><thead><tr><th>' . esc_html__( 'Order', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Date', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Status', 'p2flux-for-woocommerce' ) . '</th><th></th></tr></thead><tbody>';
 		foreach ( array_reverse( $subscription->get_related_orders( 'ids' ) ) as $order_id ) {
 			$order = wc_get_order( $order_id );
 			if ( ! $order ) {
 				continue;
 			}
-			echo '<tr><td><a href="' . esc_url( $order->get_view_order_url() ) . '">#' . esc_html( $order->get_order_number() ) . '</a></td>';
-			echo '<td>' . esc_html( $order->get_date_created() ? $order->get_date_created()->date_i18n( get_option( 'date_format' ) ) : '' ) . '</td>';
-			echo '<td>' . esc_html( wc_get_order_status_name( $order->get_status() ) ) . '</td>';
-			echo '<td>';
+			echo '<tr><td data-title="' . esc_attr__( 'Order', 'p2flux-for-woocommerce' ) . '"><a href="' . esc_url( $order->get_view_order_url() ) . '"><strong>#' . esc_html( $order->get_order_number() ) . '</strong></a></td>';
+			echo '<td data-title="' . esc_attr__( 'Date', 'p2flux-for-woocommerce' ) . '">' . esc_html( $order->get_date_created() ? $order->get_date_created()->date_i18n( get_option( 'date_format' ) ) : '' ) . '</td>';
+			echo '<td data-title="' . esc_attr__( 'Status', 'p2flux-for-woocommerce' ) . '">' . esc_html( wc_get_order_status_name( $order->get_status() ) ) . '</td>';
+			echo '<td class="p2flux-cell--actions">';
 			if ( $order->needs_payment() && ! $subscription->has_status( P2Flux_WC_Native_Subscription::EXPIRED ) ) {
-				echo '<a class="woocommerce-button button" href="' . esc_url( $order->get_checkout_payment_url() ) . '">' . esc_html__( 'Pay', 'p2flux-for-woocommerce' ) . '</a> ';
+				echo '<a class="woocommerce-button button p2flux-btn p2flux-btn--small" href="' . esc_url( $order->get_checkout_payment_url() ) . '">' . esc_html__( 'Pay', 'p2flux-for-woocommerce' ) . '</a>';
 			}
 			echo '</td></tr>';
 		}
-		echo '</tbody></table>';
+		echo '</tbody></table></div>';
 
 		// The wallet-authorization box: retry, restore, re-authorize, revoke - each only when it applies.
 		P2Flux_WC_Account::render( $subscription );
 
 		if ( $subscription->has_status( array( P2Flux_WC_Native_Subscription::ACTIVE, P2Flux_WC_Native_Subscription::ON_HOLD, P2Flux_WC_Native_Subscription::PENDING ) ) ) {
-			echo '<h2>' . esc_html__( 'Cancel', 'p2flux-for-woocommerce' ) . '</h2>';
-			echo '<p>' . esc_html__( 'Cancelling stops this store from collecting any further payment. It does not refund the period you have already paid for. Your wallet authorization can be revoked afterwards.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<div class="p2flux-card"><div class="p2flux-card__head"><h2>' . esc_html__( 'Cancel', 'p2flux-for-woocommerce' ) . '</h2></div>';
+			echo '<p class="p2flux-note">' . esc_html__( 'Cancelling stops this store from collecting any further payment. It does not refund the period you have already paid for. Your wallet authorization can be revoked afterwards.', 'p2flux-for-woocommerce' ) . '</p>';
 			printf(
-				'<p><button type="button" class="button" id="p2flux-native-cancel" data-subscription="%s" data-nonce="%s" data-url="%s">%s</button></p><p id="p2flux-native-cancel-status" role="status" aria-live="polite"></p>',
+				'<div class="p2flux-actions"><button type="button" class="button p2flux-btn p2flux-btn--danger" id="p2flux-native-cancel" data-subscription="%s" data-nonce="%s" data-url="%s" data-confirm="%s">%s</button></div><p class="p2flux-status" id="p2flux-native-cancel-status" role="status" aria-live="polite"></p></div>',
 				esc_attr( P2Flux_WC_Subscriptions::ref( $subscription ) ),
 				esc_attr( wp_create_nonce( 'p2flux_wc_account' ) ),
 				esc_url( WC_AJAX::get_endpoint( 'p2flux_native_cancel' ) ),
+				esc_attr__( 'Cancel this subscription? No further payments will be collected.', 'p2flux-for-woocommerce' ),
 				esc_html__( 'Cancel subscription', 'p2flux-for-woocommerce' )
 			);
 			wp_enqueue_script( 'p2flux-wc-native-account', plugins_url( 'assets/native-account.js', P2FLUX_WC_FILE ), array(), P2FLUX_WC_VERSION, true );
@@ -203,16 +233,16 @@ class P2Flux_WC_Native_Account {
 	private static function status_note( $subscription ) {
 		switch ( $subscription->get_status() ) {
 			case P2Flux_WC_Native_Subscription::EXPIRED:
-				echo '<p>' . esc_html__( 'This subscription was never activated and will not be charged. If you authorized it in your wallet, you can revoke that unused authorization below.', 'p2flux-for-woocommerce' ) . '</p>';
+				echo '<p class="p2flux-note">' . esc_html__( 'This subscription was never activated and will not be charged. If you authorized it in your wallet, you can revoke that unused authorization below.', 'p2flux-for-woocommerce' ) . '</p>';
 				break;
 			case P2Flux_WC_Native_Subscription::ON_HOLD:
-				echo '<p>' . esc_html__( 'A payment could not be collected. The subscription stays on hold until a future payment succeeds or you cancel it; missed periods are not collected later.', 'p2flux-for-woocommerce' ) . '</p>';
+				echo '<p class="p2flux-note">' . esc_html__( 'A payment could not be collected. The subscription stays on hold until a future payment succeeds or you cancel it; missed periods are not collected later.', 'p2flux-for-woocommerce' ) . '</p>';
 				break;
 			case P2Flux_WC_Native_Subscription::PENDING:
-				echo '<p>' . esc_html__( 'Waiting for the first payment. It must complete shortly after authorization; otherwise the signup expires and nothing is charged.', 'p2flux-for-woocommerce' ) . '</p>';
+				echo '<p class="p2flux-note">' . esc_html__( 'Waiting for the first payment. It must complete shortly after authorization; otherwise the signup expires and nothing is charged.', 'p2flux-for-woocommerce' ) . '</p>';
 				break;
 			case P2Flux_WC_Native_Subscription::CANCELLED:
-				echo '<p>' . esc_html__( 'This subscription is cancelled. No further payments will be collected by this store.', 'p2flux-for-woocommerce' ) . '</p>';
+				echo '<p class="p2flux-note">' . esc_html__( 'This subscription is cancelled. No further payments will be collected by this store.', 'p2flux-for-woocommerce' ) . '</p>';
 				break;
 		}
 	}

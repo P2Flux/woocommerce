@@ -220,6 +220,10 @@ working while new ones use the new key.
 
 == Changelog ==
 
+= 1.1.1 =
+* The wallet window opens from the "Place order" click itself; the pay page hands it the payment without a second click (falls back to the pay button where a browser refuses).
+* Restyled customer subscription pages (badges, cards, one primary action) and the P2Flux Subscriptions admin screen.
+
 = 1.1.0 =
 * P2Flux Native Subscriptions: simple fixed recurring products without WooCommerce Subscriptions.
 * A "USDC approval for subscriptions" setting: unlimited, or a number of billing periods.

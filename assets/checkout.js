@@ -206,6 +206,51 @@
 		}, 1000 );
 	}
 
+	function hostedUrl() {
+		return config.checkout + '/#/' + config.mode + '/' + encodeURIComponent( config.token );
+	}
+
+	/**
+	 * A window the checkout page opened from the "Place order" click, waiting for an address.
+	 *
+	 * Found again by name; a browser that will not hand it back without a fresh click returns null
+	 * or a closed window, and the page falls back to its own button. The flag is short-lived, so a
+	 * pay page opened later from an email never goes looking for a window that is not there.
+	 */
+	function adoptHandoff() {
+		var stamp = 0;
+		try {
+			stamp = parseInt( window.sessionStorage.getItem( 'p2flux-handoff' ) || '0', 10 );
+			window.sessionStorage.removeItem( 'p2flux-handoff' );
+		} catch ( e ) {
+			return false;
+		}
+		if ( ! stamp || Date.now() - stamp > 180000 || 'collect' === config.mode ) {
+			return false;
+		}
+		var existing = null;
+		try {
+			existing = window.open( '', 'p2flux' );
+		} catch ( e ) {
+			existing = null;
+		}
+		if ( ! existing || existing.closed ) {
+			return false;
+		}
+		var blank = false;
+		try {
+			blank = 'about:blank' === existing.location.href;
+		} catch ( e ) {
+			blank = false; // Already elsewhere: not ours to touch.
+		}
+		if ( ! blank ) {
+			return false;
+		}
+		popup = existing;
+		popup.location = hostedUrl();
+		return true;
+	}
+
 	if ( button ) {
 		// The markup ships it disabled, so a click that lands before this file has loaded cannot be
 		// swallowed silently. From here on it is a real button.
@@ -219,11 +264,7 @@
 				return;
 			}
 
-			popup = window.open(
-				config.checkout + '/#/' + config.mode + '/' + encodeURIComponent( config.token ),
-				'p2flux',
-				'width=460,height=680'
-			);
+			popup = window.open( hostedUrl(), 'p2flux', 'width=460,height=680' );
 
 			if ( ! popup ) {
 				say( config.i18n.blocked, 'bad' );
@@ -233,6 +274,12 @@
 			say( config.i18n.opening, 'busy' );
 			watchPopup();
 		} );
+
+		if ( adoptHandoff() ) {
+			button.hidden = true;
+			say( config.i18n.opening, 'busy' );
+			watchPopup();
+		}
 	}
 
 	if ( check ) {

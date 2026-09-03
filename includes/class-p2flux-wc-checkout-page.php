@@ -26,6 +26,34 @@ class P2Flux_WC_Checkout_Page {
 	 * @param P2Flux_WC_Gateway $gateway Gateway, for settings and re-minting.
 	 * @return void
 	 */
+	/**
+	 * On the checkout page: the script that opens the wallet window from the "Place order" click.
+	 *
+	 * @return void
+	 */
+	public static function handoff() {
+		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_order_received_page() || is_checkout_pay_page() ) {
+			return;
+		}
+		$gateways = WC()->payment_gateways() ? WC()->payment_gateways()->get_available_payment_gateways() : array();
+		if ( empty( $gateways['p2flux'] ) ) {
+			return;
+		}
+
+		wp_enqueue_script( 'p2flux-wc-handoff', plugins_url( 'assets/checkout-handoff.js', P2FLUX_WC_FILE ), array(), P2FLUX_WC_VERSION, true );
+		wp_add_inline_script(
+			'p2flux-wc-handoff',
+			'window.p2fluxWcHandoff = ' . wp_json_encode(
+				array(
+					'title'     => 'P2Flux',
+					'preparing' => __( 'Preparing your payment…', 'p2flux-for-woocommerce' ),
+					'ttl'       => 120000,
+				)
+			) . ';',
+			'before'
+		);
+	}
+
 	public static function render( $order, $gateway ) {
 		$subscription = self::subscription_for( $order );
 		$config       = $subscription ? self::subscription_config( $order, $subscription, $gateway ) : self::payment_config( $order, $gateway );

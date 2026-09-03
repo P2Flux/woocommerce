@@ -25,6 +25,7 @@ class P2Flux_WC_Native_Admin {
 	 */
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'menu' ), 60 );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'assets' ) );
 		add_action( 'admin_post_p2flux_native_admin', array( __CLASS__, 'action' ) );
 	}
 
@@ -110,9 +111,9 @@ class P2Flux_WC_Native_Admin {
 			echo '<td>' . esc_html( $user ? $user->display_name . ' (' . $user->user_email . ')' : '#' . $subscription->get_user_id() ) . '</td>';
 			echo '<td>' . esc_html( (string) $subscription->get( 'product_name' ) ) . '</td>';
 			echo '<td>' . esc_html( P2Flux_WC_Native_Account::amount( $subscription ) ) . '</td>';
-			echo '<td>' . esc_html( $subscription->status_label() ) . '</td>';
+			echo '<td>' . self::pill( $subscription->get_status(), $subscription->status_label() ) . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
 			echo '<td>' . esc_html( P2Flux_WC_Native_Account::next_payment( $subscription ) ) . '</td>';
-			echo '<td>' . esc_html( 'mainnet' === $subscription->get( 'env' ) ? __( 'Base Mainnet', 'p2flux-for-woocommerce' ) : __( 'Base Sepolia (test)', 'p2flux-for-woocommerce' ) ) . '</td>';
+			echo '<td>' . self::network_pill( $subscription ) . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
 			echo '<td>' . esc_html( P2Flux_WC_Native_Account::date( $subscription->timestamp( 'created_at' ) ) ) . '</td>';
 			echo '</tr>';
 		}
@@ -139,7 +140,7 @@ class P2Flux_WC_Native_Admin {
 
 		echo '<p><a href="' . esc_url( self::url() ) . '">&larr; ' . esc_html__( 'All subscriptions', 'p2flux-for-woocommerce' ) . '</a></p>';
 		/* translators: %d: subscription id. */
-		echo '<h2>' . esc_html( sprintf( __( 'Subscription #%d', 'p2flux-for-woocommerce' ), $subscription->get_id() ) ) . '</h2>';
+		echo '<h2 class="p2flux-admin__title">' . esc_html( sprintf( __( 'Subscription #%d', 'p2flux-for-woocommerce' ), $subscription->get_id() ) ) . ' ' . self::pill( $subscription->get_status(), $subscription->status_label() ) . ' ' . self::network_pill( $subscription ) . '</h2>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
 
 		$rows = array(
 			__( 'Customer', 'p2flux-for-woocommerce' )         => $user ? $user->display_name . ' (' . $user->user_email . ')' : '#' . $subscription->get_user_id(),
@@ -158,20 +159,24 @@ class P2Flux_WC_Native_Admin {
 			__( 'Cancelled', 'p2flux-for-woocommerce' )        => P2Flux_WC_Native_Account::date( $subscription->timestamp( 'cancelled_at' ) ),
 			__( 'Revoke transaction', 'p2flux-for-woocommerce' ) => (string) $subscription->get_meta( '_p2flux_revoked_tx' ) ?: '—',
 		);
-		echo '<table class="widefat striped" style="max-width:900px"><tbody>';
+		unset( $rows[ __( 'Status', 'p2flux-for-woocommerce' ) ], $rows[ __( 'Network', 'p2flux-for-woocommerce' ) ] );
+		$rows[ __( 'Collection', 'p2flux-for-woocommerce' ) ] = (string) $state['state'] . ( '' !== (string) $state['reason'] ? ' (' . $state['reason'] . ')' : '' );
+		$mono = array( __( 'Payout wallet', 'p2flux-for-woocommerce' ), __( 'Authorization', 'p2flux-for-woocommerce' ), __( 'Revoke transaction', 'p2flux-for-woocommerce' ) );
+
+		echo '<div class="p2flux-admin"><div class="p2flux-box p2flux-admin__card"><dl class="p2flux-box__rows">';
 		foreach ( $rows as $label => $value ) {
-			echo '<tr><th style="width:220px">' . esc_html( $label ) . '</th><td><code>' . esc_html( $value ) . '</code></td></tr>';
+			echo '<dt>' . esc_html( $label ) . '</dt><dd>' . ( in_array( $label, $mono, true ) ? '<code>' . esc_html( $value ) . '</code>' : esc_html( $value ) ) . '</dd>';
 		}
-		echo '</tbody></table>';
+		echo '</dl></div>';
 
 		// Authorization history: ids and statuses, never the ciphertext.
-		echo '<h3>' . esc_html__( 'Authorization history', 'p2flux-for-woocommerce' ) . '</h3><ul>';
+		echo '<div class="p2flux-box p2flux-admin__card"><h3 class="p2flux-admin__h3">' . esc_html__( 'Authorization history', 'p2flux-for-woocommerce' ) . '</h3><ul class="p2flux-admin__history">';
 		foreach ( P2Flux_WC_Auth_History::all( $subscription ) as $record ) {
-			echo '<li><code>' . esc_html( $record['id'] ) . '</code> — ' . esc_html( $record['status'] . ( ! empty( $record['reason'] ) ? ' (' . $record['reason'] . ')' : '' ) ) . ' · ' . esc_html( P2Flux_WC_Money::display( (int) $record['units'] ) ) . ' USDC / ' . (int) $record['period'] . 's</li>';
+			echo '<li>' . self::pill( 'revoked' === $record['status'] ? 'revoked' : ( 'active' === $record['status'] ? 'active' : 'muted' ), $record['status'] . ( ! empty( $record['reason'] ) ? ' · ' . $record['reason'] : '' ) ) . ' <code>' . esc_html( $record['id'] ) . '</code> <span class="p2flux-box__note">' . esc_html( P2Flux_WC_Money::display( (int) $record['units'] ) ) . ' USDC / ' . (int) $record['period'] . 's</span></li>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
 		}
-		echo '</ul>';
+		echo '</ul></div>';
 
-		echo '<h3>' . esc_html__( 'Orders', 'p2flux-for-woocommerce' ) . '</h3><table class="widefat striped" style="max-width:900px"><thead><tr><th>' . esc_html__( 'Order', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Cycle', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Status', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Period', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Transaction', 'p2flux-for-woocommerce' ) . '</th></tr></thead><tbody>';
+		echo '<div class="p2flux-box p2flux-admin__card"><h3 class="p2flux-admin__h3">' . esc_html__( 'Orders', 'p2flux-for-woocommerce' ) . '</h3><table class="widefat striped p2flux-admin__table"><thead><tr><th>' . esc_html__( 'Order', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Cycle', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Status', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Period', 'p2flux-for-woocommerce' ) . '</th><th>' . esc_html__( 'Transaction', 'p2flux-for-woocommerce' ) . '</th></tr></thead><tbody>';
 		foreach ( array_reverse( $subscription->get_related_orders( 'ids' ) ) as $order_id ) {
 			$order = wc_get_order( $order_id );
 			if ( ! $order ) {
@@ -185,25 +190,61 @@ class P2Flux_WC_Native_Admin {
 			echo '<td>' . esc_html( (string) $order->get_meta( '_p2flux_period_index' ) ) . '</td>';
 			echo '<td>' . ( '' !== $hash ? '<a href="' . esc_url( P2Flux_WC_Client::explorer_url( (string) $subscription->get( 'env' ) ) . '/tx/' . $hash ) . '" target="_blank" rel="noopener noreferrer"><code>' . esc_html( substr( $hash, 0, 14 ) . '…' ) . '</code></a>' : '—' ) . '</td></tr>';
 		}
-		echo '</tbody></table>';
+		echo '</tbody></table></div>';
 
 		// Actions, by status.
 		$retryable = self::retryable_order( $subscription );
 		$can_cancel = $subscription->has_status( array( P2Flux_WC_Native_Subscription::ACTIVE, P2Flux_WC_Native_Subscription::ON_HOLD, P2Flux_WC_Native_Subscription::PENDING ) );
 		if ( $retryable || $can_cancel ) {
-			echo '<h3>' . esc_html__( 'Actions', 'p2flux-for-woocommerce' ) . '</h3><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+			echo '<div class="p2flux-box p2flux-admin__card"><h3 class="p2flux-admin__h3">' . esc_html__( 'Actions', 'p2flux-for-woocommerce' ) . '</h3><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 			wp_nonce_field( 'p2flux_native_admin_' . $subscription->get_id() );
 			echo '<input type="hidden" name="action" value="p2flux_native_admin" /><input type="hidden" name="id" value="' . (int) $subscription->get_id() . '" />';
+			echo '<p class="p2flux-box__note">' . esc_html__( 'A retry obeys the same rules as a scheduled collection: only the current renewal, only inside its billing period. Missed periods are never collected later.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<div class="p2flux-box__actions">';
 			if ( $retryable ) {
 				/* translators: %d: renewal order id. */
-				echo '<button class="button" name="do" value="retry">' . esc_html( sprintf( __( 'Retry current payment (order #%d)', 'p2flux-for-woocommerce' ), $retryable ) ) . '</button> ';
+				echo '<button class="button button-primary" name="do" value="retry">' . esc_html( sprintf( __( 'Retry current payment (order #%d)', 'p2flux-for-woocommerce' ), $retryable ) ) . '</button>';
 			}
 			if ( $can_cancel ) {
-				echo '<button class="button" name="do" value="cancel" onclick="return confirm(\'' . esc_js( __( 'Cancel this subscription? No further payments will be collected.', 'p2flux-for-woocommerce' ) ) . '\')">' . esc_html__( 'Cancel subscription', 'p2flux-for-woocommerce' ) . '</button>';
+				echo '<button class="button p2flux-box__danger" name="do" value="cancel" onclick="return confirm(\'' . esc_js( __( 'Cancel this subscription? No further payments will be collected.', 'p2flux-for-woocommerce' ) ) . '\')">' . esc_html__( 'Cancel subscription', 'p2flux-for-woocommerce' ) . '</button>';
 			}
-			echo '</form>';
-			echo '<p class="description">' . esc_html__( 'A retry obeys the same rules as a scheduled collection: only the current renewal, only inside its billing period. Missed periods are never collected later.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '</div></form></div>';
 		}
+		echo '</div>';
+	}
+
+	/**
+	 * A status pill, reusing the order-screen box's palette.
+	 *
+	 * @param string $kind  active | on-hold | pending | cancelled | expired | revoked | test | live | muted.
+	 * @param string $label Text.
+	 * @return string HTML.
+	 */
+	private static function pill( $kind, $label ) {
+		return '<span class="p2flux-box__pill p2flux-box__pill--' . esc_attr( $kind ) . '">' . esc_html( $label ) . '</span>';
+	}
+
+	/**
+	 * @param P2Flux_WC_Native_Subscription $subscription Subscription.
+	 * @return string HTML.
+	 */
+	private static function network_pill( $subscription ) {
+		return 'mainnet' === $subscription->get( 'env' )
+			? self::pill( 'live', __( 'Base Mainnet', 'p2flux-for-woocommerce' ) )
+			: self::pill( 'test', __( 'Base Sepolia', 'p2flux-for-woocommerce' ) );
+	}
+
+	/**
+	 * The order-screen stylesheet, on this screen too.
+	 *
+	 * @param string $hook Current admin page.
+	 * @return void
+	 */
+	public static function assets( $hook ) {
+		if ( 'woocommerce_page_' . self::PAGE !== $hook ) {
+			return;
+		}
+		wp_enqueue_style( 'p2flux-wc-admin', plugins_url( 'assets/admin.css', P2FLUX_WC_FILE ), array(), P2FLUX_WC_VERSION );
 	}
 
 	/**

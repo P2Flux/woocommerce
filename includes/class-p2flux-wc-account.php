@@ -81,35 +81,69 @@ class P2Flux_WC_Account {
 			'before'
 		);
 
-		echo '<h2>' . esc_html__( 'Wallet authorization', 'p2flux-for-woocommerce' ) . '</h2>';
+		self::enqueue_style();
 
-		echo '<p id="p2flux-account-status" role="status" aria-live="polite"></p>';
+		$ended = in_array( $status, array( 'cancelled', 'pending-cancel', 'expired' ), true );
+		if ( P2Flux_WC_Collection::REAUTH_REQUIRED === $collection['state'] ) {
+			$badge = array( 'on-hold', __( 'Re-authorization needed', 'p2flux-for-woocommerce' ) );
+		} elseif ( P2Flux_WC_Collection::DUNNING === $collection['state'] ) {
+			$badge = array( 'on-hold', __( 'Payment needs attention', 'p2flux-for-woocommerce' ) );
+		} elseif ( $ended ) {
+			$badge = array( 'cancelled', __( 'Not collecting', 'p2flux-for-woocommerce' ) );
+		} else {
+			$badge = array( 'active', __( 'Authorized', 'p2flux-for-woocommerce' ) );
+		}
+
+		echo '<section class="p2flux-account"><div class="p2flux-card">';
+		echo '<div class="p2flux-card__head"><h2>' . esc_html__( 'Wallet authorization', 'p2flux-for-woocommerce' ) . '</h2>' . self::badge( $badge[0], $badge[1] ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the helper escapes.
 
 		if ( P2Flux_WC_Collection::DUNNING === $collection['state'] ) {
-			echo '<p>' . esc_html__( 'A payment could not be collected. If you have topped up your wallet or restored the approval, you can try it again now.', 'p2flux-for-woocommerce' ) . '</p>';
-			echo '<p><button type="button" class="button" id="p2flux-restore">' . esc_html__( 'Restore USDC approval', 'p2flux-for-woocommerce' ) . '</button> ';
-			echo '<button type="button" class="button" id="p2flux-retry">' . esc_html__( 'Try the payment again', 'p2flux-for-woocommerce' ) . '</button></p>';
+			echo '<p class="p2flux-note">' . esc_html__( 'A payment could not be collected. If you have topped up your wallet or restored the approval, you can try it again now.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<div class="p2flux-actions"><button type="button" class="button p2flux-btn" id="p2flux-restore">' . esc_html__( 'Restore USDC approval', 'p2flux-for-woocommerce' ) . '</button>';
+			echo '<button type="button" class="button p2flux-btn p2flux-btn--quiet" id="p2flux-retry">' . esc_html__( 'Try the payment again', 'p2flux-for-woocommerce' ) . '</button></div>';
 		}
 
 		if ( P2Flux_WC_Collection::REAUTH_REQUIRED === $collection['state'] ) {
 			$units = P2Flux_WC_Money::to_units( $subscription->get_total(), '' !== (string) $subscription->get_meta( '_p2flux_rate' ) ? (string) $subscription->get_meta( '_p2flux_rate' ) : '1' );
-			echo '<p>' . esc_html(
+			echo '<p class="p2flux-note">' . esc_html(
 				sprintf(
 					/* translators: %s: amount in USDC. */
 					__( 'The terms of this subscription have changed, and your wallet has only authorized the old ones. To continue, authorize the new amount of %s USDC per period. Nothing is collected until you do.', 'p2flux-for-woocommerce' ),
 					null !== $units ? P2Flux_WC_Money::display( $units ) : $subscription->get_total()
 				)
 			) . '</p>';
-			echo '<p><button type="button" class="button" id="p2flux-reauth">' . esc_html__( 'Re-authorize', 'p2flux-for-woocommerce' ) . '</button></p>';
+			echo '<div class="p2flux-actions"><button type="button" class="button p2flux-btn" id="p2flux-reauth">' . esc_html__( 'Re-authorize', 'p2flux-for-woocommerce' ) . '</button></div>';
 		}
 
-		if ( in_array( $status, array( 'cancelled', 'pending-cancel', 'expired' ), true ) ) {
-			echo '<p>' . esc_html__( 'This subscription is cancelled and this store will not collect from it again. Your wallet still holds the standing permission you signed - revoking it removes that permission entirely.', 'p2flux-for-woocommerce' ) . '</p>';
+		if ( $ended ) {
+			echo '<p class="p2flux-note">' . esc_html__( 'This subscription is cancelled and this store will not collect from it again. Your wallet still holds the standing permission you signed - revoking it removes that permission entirely.', 'p2flux-for-woocommerce' ) . '</p>';
 		} else {
-			echo '<p>' . esc_html__( 'Revoking ends this store’s permission to collect future payments from your wallet. It does not refund the period you have already paid for.', 'p2flux-for-woocommerce' ) . '</p>';
+			echo '<p class="p2flux-note">' . esc_html__( 'Revoking ends this store’s permission to collect future payments from your wallet. It does not refund the period you have already paid for.', 'p2flux-for-woocommerce' ) . '</p>';
 		}
 
-		echo '<p><button type="button" class="button" id="p2flux-revoke">' . esc_html__( 'Revoke wallet authorization', 'p2flux-for-woocommerce' ) . '</button></p>';
+		echo '<div class="p2flux-actions"><button type="button" class="button p2flux-btn p2flux-btn--danger" id="p2flux-revoke">' . esc_html__( 'Revoke wallet authorization', 'p2flux-for-woocommerce' ) . '</button></div>';
+		echo '<p class="p2flux-status" id="p2flux-account-status" role="status" aria-live="polite"></p>';
+		echo '</div></section>';
+	}
+
+	/**
+	 * The account stylesheet, once per page.
+	 *
+	 * @return void
+	 */
+	public static function enqueue_style() {
+		wp_enqueue_style( 'p2flux-wc-account', plugins_url( 'assets/account.css', P2FLUX_WC_FILE ), array(), P2FLUX_WC_VERSION );
+	}
+
+	/**
+	 * A status badge.
+	 *
+	 * @param string $kind  active | on-hold | pending | cancelled | expired | revoked | test.
+	 * @param string $label Text.
+	 * @return string HTML.
+	 */
+	public static function badge( $kind, $label ) {
+		return '<span class="p2flux-badge p2flux-badge--' . esc_attr( $kind ) . '">' . esc_html( $label ) . '</span>';
 	}
 
 	/**

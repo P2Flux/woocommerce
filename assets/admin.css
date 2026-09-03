@@ -14,3 +14,22 @@
 .p2flux-box__warning { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid #d63638; background: #fcf0f1; color: #8a1f22; }
 .p2flux-box__actions { margin: 10px 0 0; display: flex; gap: 8px; flex-wrap: wrap; }
 .p2flux-box__status { margin: 8px 0 0; color: #50575e; min-height: 1em; }
+.p2flux-box__pill--active { background: #e7f6ee; color: #1f6b45; }
+.p2flux-box__pill--on-hold { background: #fcf3e6; color: #8a5a10; }
+.p2flux-box__pill--pending { background: #eef2ff; color: #3b2fb8; }
+.p2flux-box__pill--cancelled, .p2flux-box__pill--expired, .p2flux-box__pill--muted { background: #f0f0f1; color: #50575e; }
+.p2flux-box__pill--revoked { background: #fcf0f1; color: #8a1f22; }
+.p2flux-box__danger.button { color: #b32d2e; border-color: #b32d2e; }
+.p2flux-box__danger.button:hover { background: #fcf0f1; color: #8a1f22; border-color: #8a1f22; }
+
+/* The P2Flux Subscriptions screen: the same cards, side by side with the WordPress list table. */
+.p2flux-admin { max-width: 960px; }
+.p2flux-admin__title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.p2flux-admin__card { margin: 0 0 16px; border: 1px solid #dcdcde; border-radius: 6px; background: #fff; }
+.p2flux-admin__card .p2flux-box__rows { grid-template-columns: 200px 1fr; }
+.p2flux-admin__h3 { margin: 0 0 10px; font-size: 14px; }
+.p2flux-admin__history { margin: 0; }
+.p2flux-admin__history li { margin: 0 0 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.p2flux-admin__table { margin: 0; border: 0; box-shadow: none; }
+.p2flux-admin__card .p2flux-box__actions { margin-top: 0; }
+.wp-list-table .p2flux-box__pill { vertical-align: middle; }
