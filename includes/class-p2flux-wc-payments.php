@@ -102,16 +102,16 @@ class P2Flux_WC_Payments {
 	 * @return void
 	 */
 	private static function stop_recurring_collection( $order ) {
-		if ( ! function_exists( 'wcs_get_subscriptions_for_renewal_order' ) ) {
+		$subscription = P2Flux_WC_Subscriptions::for_order( $order );
+		if ( ! $subscription ) {
+			return;
+		}
+		// A parent order paid by hand is not a renewal: nothing recurring exists to stop yet.
+		$parent = P2Flux_WC_Subscriptions::for_order( $order, true );
+		if ( $parent ) {
 			return;
 		}
 
-		$subscriptions = wcs_get_subscriptions_for_renewal_order( $order );
-		if ( empty( $subscriptions ) ) {
-			return;
-		}
-
-		$subscription = reset( $subscriptions );
 		$order->update_meta_data( '_p2flux_manual_paid', 1 );
 		$order->save();
 
@@ -126,6 +126,8 @@ class P2Flux_WC_Payments {
 		P2Flux_WC_Collection::set( $subscription, P2Flux_WC_Collection::NORMAL, array( 'renewal_order_id' => 0 ) );
 		$order->add_order_note( __( 'P2Flux: this renewal was paid directly, so the recurring charge for it has been cancelled. The subscription continues normally.', 'p2flux-for-woocommerce' ) );
 		$order->save();
+
+		P2Flux_WC_Subscriptions::after_paid( $order );
 	}
 
 	/**

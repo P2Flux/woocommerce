@@ -31,11 +31,11 @@ class P2Flux_WC_Activation {
 	 */
 	public static function store( $subscription, $order, $capability ) {
 		$outcome = P2Flux_WC_Lock::with(
-			$subscription->get_id(),
+			P2Flux_WC_Subscriptions::lock_key( $subscription ),
 			static function () use ( $subscription, $order, $capability ) {
 				// Re-read inside the lock: another request may have activated this already, in which
 				// case there is nothing to do and saying so is not an error.
-				$fresh = wcs_get_subscription( $subscription->get_id() );
+				$fresh = P2Flux_WC_Subscriptions::load( P2Flux_WC_Subscriptions::ref( $subscription ) );
 				if ( ! $fresh ) {
 					return new WP_Error( 'INVALID_SUBSCRIPTION' );
 				}
@@ -108,6 +108,7 @@ class P2Flux_WC_Activation {
 				$fresh->save();
 
 				P2Flux_WC_Collection::set( $fresh, P2Flux_WC_Collection::NORMAL, array( 'renewal_order_id' => $order->get_id() ) );
+				P2Flux_WC_Subscriptions::after_activated( $fresh, $status );
 
 				return true;
 			}

@@ -354,12 +354,17 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 	 * @return array|WP_Error
 	 */
 	private function prepare_subscription( $order, $rate ) {
-		$subscriptions = wcs_get_subscriptions_for_order( $order, array( 'order_type' => 'parent' ) );
-		if ( 1 !== count( $subscriptions ) ) {
-			return new WP_Error( 'p2flux_multiple', __( 'P2Flux can pay one subscription per order.', 'p2flux-for-woocommerce' ) );
+		if ( function_exists( 'wcs_get_subscriptions_for_order' ) && ! $order->get_meta( P2Flux_WC_Subscriptions::NATIVE_META ) ) {
+			$subscriptions = wcs_get_subscriptions_for_order( $order, array( 'order_type' => 'parent' ) );
+			if ( count( $subscriptions ) > 1 ) {
+				return new WP_Error( 'p2flux_multiple', __( 'P2Flux can pay one subscription per order.', 'p2flux-for-woocommerce' ) );
+			}
 		}
 
-		$subscription = reset( $subscriptions );
+		$subscription = P2Flux_WC_Subscriptions::for_order( $order, true );
+		if ( ! $subscription ) {
+			return new WP_Error( 'p2flux_multiple', __( 'P2Flux can pay one subscription per order.', 'p2flux-for-woocommerce' ) );
+		}
 		$units        = P2Flux_WC_Money::to_units( $subscription->get_total(), $rate );
 		$period       = self::billing_period( $subscription );
 
@@ -460,13 +465,12 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 	 * @return void
 	 */
 	public function scheduled_subscription_payment( $amount, $renewal_order ) {
-		$subscriptions = wcs_get_subscriptions_for_renewal_order( $renewal_order );
-		if ( empty( $subscriptions ) ) {
+		$subscription = P2Flux_WC_Subscriptions::for_order( $renewal_order );
+		if ( ! $subscription || P2Flux_WC_Subscriptions::is_native( $subscription ) ) {
 			return;
 		}
 
-		$subscription = reset( $subscriptions );
-		$outcome      = P2Flux_WC_Charger::collect( $subscription->get_id(), $renewal_order->get_id() );
+		$outcome = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $subscription ), $renewal_order->get_id() );
 
 		if ( 'busy' === $outcome['status'] ) {
 			P2Flux_WC_Jobs::schedule( 'recharge', $renewal_order->get_id(), 60 );
@@ -523,6 +527,10 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 	 * @return bool
 	 */
 	private function is_subscription_order( $order ) {
+		if ( $order->get_meta( P2Flux_WC_Subscriptions::NATIVE_META ) ) {
+			return true;
+		}
+
 		return function_exists( 'wcs_order_contains_subscription' ) && wcs_order_contains_subscription( $order, 'parent' );
 	}
 

@@ -245,12 +245,6 @@ class P2Flux_WC_Checkout_Page {
 	 * @return WC_Subscription|null
 	 */
 	private static function subscription_for( $order ) {
-		if ( ! function_exists( 'wcs_get_subscriptions_for_order' ) ) {
-			return null;
-		}
-
-		$found = wcs_get_subscriptions_for_order( $order, array( 'order_type' => 'parent' ) );
-
-		return ! empty( $found ) ? reset( $found ) : null;
+		return P2Flux_WC_Subscriptions::for_order( $order, true );
 	}
 }

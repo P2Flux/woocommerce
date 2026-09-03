@@ -47,6 +47,7 @@ function p2flux_wc_load() {
 			'rates',
 			'lock',
 			'periods',
+			'subscriptions',
 			'collection',
 			'auth-history',
 			'intents',

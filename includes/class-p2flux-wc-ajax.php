@@ -136,15 +136,12 @@ class P2Flux_WC_Ajax {
 			wp_send_json_error( array( 'code' => 'FORBIDDEN' ), 403 );
 		}
 
-		$subscriptions = function_exists( 'wcs_get_subscriptions_for_order' )
-			? wcs_get_subscriptions_for_order( $order, array( 'order_type' => 'parent' ) )
-			: array();
-		if ( empty( $subscriptions ) ) {
+		$subscription = P2Flux_WC_Subscriptions::for_order( $order, true );
+		if ( ! $subscription ) {
 			wp_send_json_error( array( 'code' => 'NOT_A_SUBSCRIPTION' ), 400 );
 		}
 
-		$subscription = reset( $subscriptions );
-		$capability   = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
+		$capability = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
 
 		if ( '' !== $capability && ! P2Flux_WC_Auth_History::active( $subscription ) ) {
 			$stored = P2Flux_WC_Activation::store( $subscription, $order, $capability );
@@ -163,7 +160,7 @@ class P2Flux_WC_Ajax {
 			}
 		}
 
-		$outcome = P2Flux_WC_Charger::collect( $subscription->get_id(), $order->get_id() );
+		$outcome = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $subscription ), $order->get_id() );
 
 		wp_send_json_success( P2Flux_WC_Activation::to_page_result( $outcome, $order ) );
 	}

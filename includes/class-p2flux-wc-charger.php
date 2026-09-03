@@ -33,8 +33,8 @@ class P2Flux_WC_Charger {
 	/**
 	 * Collect one period for a renewal (or the first charge on a parent order).
 	 *
-	 * @param int $subscription_id WooCommerce subscription id.
-	 * @param int $order_id        Order the charge should pay.
+	 * @param string|int $subscription_id Subscription reference ('wcs:<id>', 'native:<id>', or a WCS id).
+	 * @param int        $order_id        Order the charge should pay.
 	 * @return array<string,mixed> {
 	 *     @type string $status  charged|reconciling|pending|failed|cancelled|refused|busy.
 	 *     @type string $code    Protocol status or refusal reason.
@@ -43,7 +43,8 @@ class P2Flux_WC_Charger {
 	 * }
 	 */
 	public static function collect( $subscription_id, $order_id ) {
-		$token = P2Flux_WC_Lock::acquire( $subscription_id );
+		$key   = P2Flux_WC_Subscriptions::lock_key( $subscription_id );
+		$token = P2Flux_WC_Lock::acquire( $key );
 		if ( false === $token ) {
 			/*
 			 * Someone else is mid-charge on this subscription. Not an error and not something to
@@ -58,7 +59,7 @@ class P2Flux_WC_Charger {
 		try {
 			return self::guarded( $subscription_id, $order_id, $token );
 		} finally {
-			P2Flux_WC_Lock::release( $subscription_id, $token );
+			P2Flux_WC_Lock::release( $key, $token );
 		}
 	}
 
@@ -71,7 +72,7 @@ class P2Flux_WC_Charger {
 	 * @return array<string,mixed>
 	 */
 	private static function guarded( $subscription_id, $order_id, $token ) {
-		$subscription = wcs_get_subscription( $subscription_id );
+		$subscription = P2Flux_WC_Subscriptions::load( $subscription_id );
 		$order        = wc_get_order( $order_id );
 
 		if ( ! $subscription || ! $order ) {
@@ -130,11 +131,30 @@ class P2Flux_WC_Charger {
 		}
 
 		$period = self::expected_period( $authorization );
-		$claim  = P2Flux_WC_Periods::claim(
+
+		/*
+		 * The engine's say on WHICH period this order may use. WooCommerce Subscriptions owns its own
+		 * calendar and asks when a renewal is due, so whatever period is current is the right one. A
+		 * native renewal is bound to the period its due date fell in, and a native signup to a short
+		 * window: a period that has opened too early waits, one that has passed is never charged for
+		 * an older invoice, and an expired signup never charges at all.
+		 */
+		$gate = P2Flux_WC_Subscriptions::charge_gate( $subscription, $order, $period );
+		if ( true !== $gate ) {
+			P2Flux_WC_Logger::log( 'charge refused by the engine gate', array( 'reason' => $gate['code'], 'order' => $order_id, 'period' => $period ) );
+			if ( 'CYCLE_NOT_OPEN' === $gate['code'] && ! empty( $gate['retry_at'] ) ) {
+				P2Flux_WC_Jobs::schedule( 'recharge', $order_id, max( 60, (int) $gate['retry_at'] - time() ) );
+			}
+
+			return self::refused( $gate['code'], 'This renewal cannot be collected in the current billing period.' );
+		}
+
+		$claim = P2Flux_WC_Periods::claim(
 			array(
 				'auth_id'         => $authorization['id'],
 				'period_index'    => $period,
-				'subscription_id' => $subscription_id,
+				'subscription_id' => $subscription->get_id(),
+				'engine'          => P2Flux_WC_Subscriptions::engine( $subscription ),
 				'order_id'        => $order_id,
 				'units'           => isset( $authorization['units'] ) ? (int) $authorization['units'] : 0,
 				'environment'     => isset( $authorization['environment'] ) ? $authorization['environment'] : '',
@@ -184,11 +204,12 @@ class P2Flux_WC_Charger {
 	 */
 	private static function reconcile( $subscription_id, $order_id, array $authorization, $period, $result, $token ) {
 		// Re-read: both objects may have changed while the request was in flight.
-		$subscription = wcs_get_subscription( $subscription_id );
+		$subscription = P2Flux_WC_Subscriptions::load( $subscription_id );
 		$order        = wc_get_order( $order_id );
 		if ( ! $subscription || ! $order ) {
 			return self::refused( 'GONE', 'The subscription or order no longer exists.' );
 		}
+		$lock_key = P2Flux_WC_Subscriptions::lock_key( $subscription );
 
 		/*
 		 * The response names the period it is talking about, and that is authoritative. The claim was
@@ -198,12 +219,33 @@ class P2Flux_WC_Charger {
 		 * it does not own is the one outcome worth this much care.
 		 */
 		$reported = isset( $result->periodIndex ) && null !== $result->periodIndex ? (int) $result->periodIndex : null;
+		if ( null !== $reported && $reported < (int) $period ) {
+			/*
+			 * An answer about an EARLIER period that another order is still settling: the previous
+			 * renewal's charge has not reached finality, and the API will not open this period until
+			 * it has. Nothing about this order is decided by that. Keep its claim, wait, ask again.
+			 */
+			$earlier = P2Flux_WC_Periods::get( $authorization['id'], $reported );
+			if ( $earlier && (int) $earlier['order_id'] !== (int) $order_id
+				&& in_array( $earlier['state'], array( P2Flux_WC_Periods::CHARGING, P2Flux_WC_Periods::RECONCILING ), true ) ) {
+				P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CLAIMED );
+				P2Flux_WC_Jobs::schedule( 'recharge', $order_id, P2Flux_WC_Renewal::CONFIRMING_DELAY );
+
+				return array(
+					'status'  => 'pending',
+					'code'    => 'PREVIOUS_PERIOD_SETTLING',
+					'tx_hash' => '',
+					'message' => '',
+				);
+			}
+		}
 		if ( null !== $reported && $reported !== (int) $period ) {
 			$moved = P2Flux_WC_Periods::claim(
 				array(
 					'auth_id'         => $authorization['id'],
 					'period_index'    => $reported,
-					'subscription_id' => $subscription_id,
+					'subscription_id' => $subscription->get_id(),
+					'engine'          => P2Flux_WC_Subscriptions::engine( $subscription ),
 					'order_id'        => $order_id,
 					'units'           => isset( $authorization['units'] ) ? (int) $authorization['units'] : 0,
 					'environment'     => isset( $authorization['environment'] ) ? $authorization['environment'] : '',
@@ -242,7 +284,7 @@ class P2Flux_WC_Charger {
 		$hash     = isset( $result->txHash ) ? (string) $result->txHash : '';
 		$proven   = 'paid' === $decision['outcome'] && '' !== $hash;
 
-		$still_ours = P2Flux_WC_Lock::still_ours( $subscription_id, $token );
+		$still_ours = P2Flux_WC_Lock::still_ours( $lock_key, $token );
 		$status     = $subscription->get_status();
 		$lifecycle  = in_array( $status, array( 'cancelled', 'pending-cancel', 'expired' ), true )
 			|| P2Flux_WC_Collection::SUSPENDED === P2Flux_WC_Collection::get( $subscription )['state'];
@@ -291,6 +333,7 @@ class P2Flux_WC_Charger {
 				P2Flux_WC_Collection::bump( $subscription, '' !== $decision['counter'] ? $decision['counter'] : 'reconcile' );
 			}
 			P2Flux_WC_Jobs::schedule( 'reconcile', $order_id, (int) $decision['delay'] );
+			self::notify( $subscription, $order, $decision, $result );
 
 			return array(
 				'status'  => 'reconciling',
@@ -349,8 +392,12 @@ class P2Flux_WC_Charger {
 			$order->update_status( $decision['order_status'], $decision['note'] );
 		}
 		if ( null !== $decision['schedule'] ) {
-			P2Flux_WC_Jobs::schedule( $decision['schedule'], $order_id, (int) $decision['delay'] );
+			$delay = P2Flux_WC_Subscriptions::retry_delay( $subscription, $order, $decision );
+			if ( null !== $delay ) {
+				P2Flux_WC_Jobs::schedule( $decision['schedule'], $order_id, (int) $delay );
+			}
 		}
+		self::notify( $subscription, $order, $decision, $result );
 
 		return array(
 			'status'  => 'cancel' === $decision['outcome'] ? 'cancelled' : ( 'failed' === $decision['outcome'] ? 'failed' : 'pending' ),
@@ -387,6 +434,34 @@ class P2Flux_WC_Charger {
 
 		$order->payment_complete( $hash );
 		$order->save();
+
+		// The engine's schedule moves on from here - the one funnel every proven payment passes.
+		P2Flux_WC_Subscriptions::after_paid( $order );
+	}
+
+	/**
+	 * Tell the customer when, and only when, the decision says they have to act.
+	 *
+	 * Confirming, reconciling and transient failures are ours to resolve and never produce an email;
+	 * a wallet that is short, an approval that ran out, or terms that need signing again do. The
+	 * engine decides how (WooCommerce Subscriptions has its own emails; native subscriptions send one
+	 * of theirs), and the order remembers what it already said so a retry ladder does not repeat it.
+	 *
+	 * @param object   $subscription Subscription.
+	 * @param WC_Order $order        Order.
+	 * @param array    $decision     Decision.
+	 * @param object   $result       Charge result.
+	 * @return void
+	 */
+	private static function notify( $subscription, $order, array $decision, $result ) {
+		if ( empty( $decision['notify'] ) || 'cancel' === $decision['outcome'] ) {
+			return;
+		}
+		if ( ! class_exists( 'P2Flux_WC_Native_Emails' ) || ! P2Flux_WC_Subscriptions::is_native( $subscription ) ) {
+			return;
+		}
+
+		P2Flux_WC_Native_Emails::action_required( $subscription, $order, isset( $result->status ) ? (string) $result->status : 'UNKNOWN' );
 	}
 
 	/**

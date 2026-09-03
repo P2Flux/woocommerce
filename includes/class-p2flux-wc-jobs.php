@@ -102,11 +102,15 @@ class P2Flux_WC_Jobs {
 	 * @return void
 	 */
 	public static function unschedule_subscription( $subscription ) {
-		self::unschedule_order( $subscription->get_id() );
+		if ( ! P2Flux_WC_Subscriptions::is_native( $subscription ) ) {
+			self::unschedule_order( $subscription->get_id() );
+		}
 
 		foreach ( $subscription->get_related_orders( 'ids' ) as $order_id ) {
 			self::unschedule_order( $order_id );
 		}
+
+		P2Flux_WC_Subscriptions::unschedule( $subscription );
 	}
 
 	/**
@@ -121,22 +125,13 @@ class P2Flux_WC_Jobs {
 			return;
 		}
 
-		$subscriptions = function_exists( 'wcs_get_subscriptions_for_renewal_order' )
-			? wcs_get_subscriptions_for_renewal_order( $order )
-			: array();
-		$subscription  = ! empty( $subscriptions ) ? reset( $subscriptions ) : null;
-
-		if ( ! $subscription ) {
-			// A parent order's first charge, retried.
-			$parents      = function_exists( 'wcs_get_subscriptions_for_order' ) ? wcs_get_subscriptions_for_order( $order, array( 'order_type' => 'parent' ) ) : array();
-			$subscription = ! empty( $parents ) ? reset( $parents ) : null;
-		}
-
+		// A renewal order, or a parent order whose first charge is being retried.
+		$subscription = self::subscription_for( $order );
 		if ( ! $subscription ) {
 			return;
 		}
 
-		$outcome = P2Flux_WC_Charger::collect( $subscription->get_id(), $order->get_id() );
+		$outcome = P2Flux_WC_Charger::collect( P2Flux_WC_Subscriptions::ref( $subscription ), $order->get_id() );
 
 		if ( 'busy' === $outcome['status'] ) {
 			// Another worker holds the lock. Come back after it has finished rather than waiting.
@@ -387,19 +382,6 @@ class P2Flux_WC_Jobs {
 	 * @return WC_Subscription|null
 	 */
 	private static function subscription_for( $order ) {
-		if ( function_exists( 'wcs_get_subscriptions_for_renewal_order' ) ) {
-			$found = wcs_get_subscriptions_for_renewal_order( $order );
-			if ( ! empty( $found ) ) {
-				return reset( $found );
-			}
-		}
-		if ( function_exists( 'wcs_get_subscriptions_for_order' ) ) {
-			$found = wcs_get_subscriptions_for_order( $order, array( 'order_type' => 'parent' ) );
-			if ( ! empty( $found ) ) {
-				return reset( $found );
-			}
-		}
-
-		return null;
+		return P2Flux_WC_Subscriptions::for_order( $order );
 	}
 }

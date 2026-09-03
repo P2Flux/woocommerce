@@ -297,16 +297,6 @@ class P2Flux_WC_Refunds {
 	 * @return WC_Subscription|null
 	 */
 	private static function subscription_for( $order ) {
-		foreach ( array( 'wcs_get_subscriptions_for_renewal_order', 'wcs_get_subscriptions_for_order' ) as $finder ) {
-			if ( ! function_exists( $finder ) ) {
-				continue;
-			}
-			$found = call_user_func( $finder, $order );
-			if ( ! empty( $found ) ) {
-				return reset( $found );
-			}
-		}
-
-		return null;
+		return P2Flux_WC_Subscriptions::for_order( $order );
 	}
 }

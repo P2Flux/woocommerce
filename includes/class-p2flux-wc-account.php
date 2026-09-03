@@ -56,7 +56,7 @@ class P2Flux_WC_Account {
 			'p2flux-wc-account',
 			'window.p2fluxWcAccount = ' . wp_json_encode(
 				array(
-					'subscription' => $subscription->get_id(),
+					'subscription' => P2Flux_WC_Subscriptions::ref( $subscription ),
 					'nonce'        => wp_create_nonce( 'p2flux_wc' ),
 					'checkout'     => P2Flux_WC_Client::checkout_url( isset( $authorization['environment'] ) ? $authorization['environment'] : P2Flux_WC_Client::current_environment() ),
 					'ajax'         => array(
@@ -350,8 +350,8 @@ class P2Flux_WC_Account {
 	private static function authorized_subscription() {
 		check_ajax_referer( 'p2flux_wc', 'nonce' );
 
-		$id           = isset( $_POST['subscription'] ) ? absint( $_POST['subscription'] ) : 0;
-		$subscription = $id && function_exists( 'wcs_get_subscription' ) ? wcs_get_subscription( $id ) : null;
+		$ref          = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
+		$subscription = '' !== $ref ? P2Flux_WC_Subscriptions::load( $ref ) : null;
 
 		if ( ! $subscription || ! self::owned_by_current_user( $subscription ) ) {
 			wp_send_json_error( array( 'message' => __( 'Not allowed.', 'p2flux-for-woocommerce' ) ), 403 );

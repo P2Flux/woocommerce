@@ -43,7 +43,7 @@ class P2Flux_WC_Lock {
 	 * Never blocks. A caller that cannot have it reschedules instead - holding a PHP worker on a
 	 * spin is how a busy store turns one slow charge into an outage.
 	 *
-	 * @param int $subscription_id WooCommerce subscription id.
+	 * @param string|int $subscription_id Lock key: 'wcs-<id>', 'native-<id>', or a bare WCS id.
 	 * @return string|false Owner token, or false when someone else holds it.
 	 */
 	public static function acquire( $subscription_id ) {
@@ -174,10 +174,17 @@ class P2Flux_WC_Lock {
 	/**
 	 * Option name for a subscription's lock.
 	 *
-	 * @param int $subscription_id WooCommerce subscription id.
+	 * A bare integer is a WooCommerce Subscriptions id and keeps the name it always had; an engine
+	 * prefix ('wcs-', 'native-') keeps two engines' ids from ever sharing a lease.
+	 *
+	 * @param string|int $subscription_id Lock key.
 	 * @return string
 	 */
 	private static function option_name( $subscription_id ) {
-		return 'p2flux_wc_lock_' . (int) $subscription_id;
+		if ( is_int( $subscription_id ) || ctype_digit( (string) $subscription_id ) ) {
+			return 'p2flux_wc_lock_' . (int) $subscription_id;
+		}
+
+		return 'p2flux_wc_lock_' . preg_replace( '/[^a-z0-9_-]/i', '', (string) $subscription_id );
 	}
 }

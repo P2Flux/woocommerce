@@ -22,6 +22,7 @@ require __DIR__ . '/../includes/class-p2flux-wc-client.php';
 require __DIR__ . '/../includes/class-p2flux-wc-collection.php';
 require __DIR__ . '/../includes/class-p2flux-wc-auth-history.php';
 require __DIR__ . '/../includes/class-p2flux-wc-renewal.php';
+require __DIR__ . '/../includes/class-p2flux-wc-subscriptions.php';
 require __DIR__ . '/../includes/class-p2flux-wc-charger.php';
 require __DIR__ . '/../includes/class-p2flux-wc-jobs.php';
 require __DIR__ . '/../includes/class-p2flux-wc-lifecycle.php';
