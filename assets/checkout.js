@@ -211,45 +211,29 @@
 	}
 
 	/**
-	 * A window the checkout page opened from the "Place order" click, waiting for an address.
+	 * A window the checkout page opened from the "Place order" click, asking for an address.
 	 *
-	 * Found again by name; a browser that will not hand it back without a fresh click returns null
-	 * or a closed window, and the page falls back to its own button. The flag is short-lived, so a
-	 * pay page opened later from an email never goes looking for a window that is not there.
+	 * The window polls its opener for this function; the first call after this page is ready gets
+	 * the hosted checkout address and the page treats that window as its own. Anything odd - a
+	 * second window, a call after settlement, a mode with no window - is refused and the page keeps
+	 * its own button.
 	 */
-	function adoptHandoff() {
-		var stamp = 0;
+	window.p2fluxHandoffAdopt = function ( win ) {
+		if ( settled || popup || ! win || win.closed || 'collect' === config.mode || ! button ) {
+			return false;
+		}
+		popup = win;
 		try {
-			stamp = parseInt( window.sessionStorage.getItem( 'p2flux-handoff' ) || '0', 10 );
-			window.sessionStorage.removeItem( 'p2flux-handoff' );
+			popup.location = hostedUrl();
 		} catch ( e ) {
+			popup = null;
 			return false;
 		}
-		if ( ! stamp || Date.now() - stamp > 180000 || 'collect' === config.mode ) {
-			return false;
-		}
-		var existing = null;
-		try {
-			existing = window.open( '', 'p2flux' );
-		} catch ( e ) {
-			existing = null;
-		}
-		if ( ! existing || existing.closed ) {
-			return false;
-		}
-		var blank = false;
-		try {
-			blank = 'about:blank' === existing.location.href;
-		} catch ( e ) {
-			blank = false; // Already elsewhere: not ours to touch.
-		}
-		if ( ! blank ) {
-			return false;
-		}
-		popup = existing;
-		popup.location = hostedUrl();
+		button.hidden = true;
+		say( config.i18n.opening, 'busy' );
+		watchPopup();
 		return true;
-	}
+	};
 
 	if ( button ) {
 		// The markup ships it disabled, so a click that lands before this file has loaded cannot be
@@ -274,12 +258,6 @@
 			say( config.i18n.opening, 'busy' );
 			watchPopup();
 		} );
-
-		if ( adoptHandoff() ) {
-			button.hidden = true;
-			say( config.i18n.opening, 'busy' );
-			watchPopup();
-		}
 	}
 
 	if ( check ) {

@@ -3,9 +3,9 @@
  *
  * The hosted checkout needs a token that only exists once the order does, so the window cannot be
  * given its address here. But a window can be OPENED here - browsers allow one per real click - and
- * navigated later by the pay page, which finds it again by name. Until then it shows a one-line
- * "preparing" note, and closes itself if nobody ever navigates it (a validation error kept the
- * shopper on the checkout, say).
+ * it then asks its opener for an address until the pay page has loaded there and answers. Until
+ * then it shows a one-line "preparing" note, and closes itself if nobody ever answers (a validation
+ * error kept the shopper on the checkout, say).
  *
  * If a browser refuses any part of this, nothing is lost: the pay page still shows its own button,
  * exactly as before.
@@ -14,7 +14,6 @@
 	'use strict';
 	var config = window.p2fluxWcHandoff || {};
 	var NAME = 'p2flux';
-	var KEY = 'p2flux-handoff';
 	var opened = null;
 
 	function selectedMethod() {
@@ -36,7 +35,10 @@
 			'.s{width:28px;height:28px;border:3px solid #e6e9f0;border-top-color:#4636e3;border-radius:50%;animation:r 1s linear infinite}' +
 			'@keyframes r{to{transform:rotate(360deg)}}p{margin:0;color:#4a5063}</style></head>' +
 			'<body><div class="w"><div class="s"></div><p>' + ( config.preparing || 'Preparing your payment…' ) + '</p></div>' +
-			'<script>setTimeout(function(){window.close()},' + ( config.ttl || 120000 ) + ')</script></body></html>'
+			// The window asks its opener for an address until the pay page arrives there and answers,
+			// or gives up. Same-origin with the opener, so reading a function off it is allowed.
+			'<script>var t=setInterval(function(){try{if(window.opener&&window.opener.p2fluxHandoffAdopt&&window.opener.p2fluxHandoffAdopt(window)){clearInterval(t)}}catch(e){}},300);' +
+			'setTimeout(function(){clearInterval(t);window.close()},' + ( config.ttl || 120000 ) + ')</script></body></html>'
 		);
 		doc.close();
 	}
@@ -51,7 +53,6 @@
 				return;
 			}
 			splash( opened );
-			window.sessionStorage.setItem( KEY, String( Date.now() ) );
 		} catch ( e ) {
 			opened = null;
 		}
@@ -59,7 +60,6 @@
 
 	function abandon() {
 		try {
-			window.sessionStorage.removeItem( KEY );
 			if ( opened && ! opened.closed ) {
 				opened.close();
 			}
