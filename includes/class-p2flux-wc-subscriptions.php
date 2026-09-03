@@ -219,6 +219,22 @@ class P2Flux_WC_Subscriptions {
 	}
 
 	/**
+	 * A charge for this order failed for a reason the customer has to fix.
+	 *
+	 * WooCommerce Subscriptions has already put its subscription on hold before asking the gateway;
+	 * a native subscription is put on hold here.
+	 *
+	 * @param object   $subscription Subscription.
+	 * @param WC_Order $order        Order.
+	 * @return void
+	 */
+	public static function after_failed( $subscription, $order ) {
+		if ( self::is_native( $subscription ) ) {
+			$subscription->after_failed( $order );
+		}
+	}
+
+	/**
 	 * An authorization was just stored for this subscription.
 	 *
 	 * @param object $subscription Subscription (fresh, under the lock).

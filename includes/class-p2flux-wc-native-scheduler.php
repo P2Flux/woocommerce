@@ -365,6 +365,22 @@ class P2Flux_WC_Native_Scheduler {
 	}
 
 	/**
+	 * A renewal could not be collected for a reason the customer must fix: on hold, until an eligible
+	 * payment succeeds or somebody cancels. A signup stays pending inside its window.
+	 *
+	 * @param P2Flux_WC_Native_Subscription $subscription Subscription.
+	 * @param WC_Order                      $order        Order.
+	 * @return void
+	 */
+	public static function after_failed( $subscription, $order ) {
+		unset( $order );
+		if ( $subscription->has_status( P2Flux_WC_Native_Subscription::ACTIVE ) ) {
+			$subscription->set( 'status', P2Flux_WC_Native_Subscription::ON_HOLD );
+			$subscription->save();
+		}
+	}
+
+	/**
 	 * A renewal's period passed without settlement.
 	 *
 	 * Idempotent per order, and a no-op while a charge sent for it may still settle.

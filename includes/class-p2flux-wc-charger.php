@@ -389,7 +389,11 @@ class P2Flux_WC_Charger {
 			}
 		}
 		if ( null !== $decision['order_status'] ) {
-			$order->update_status( $decision['order_status'], $decision['note'] );
+			// The note was added above; the status change does not repeat it.
+			$order->update_status( $decision['order_status'] );
+		}
+		if ( 'failed' === $decision['outcome'] ) {
+			P2Flux_WC_Subscriptions::after_failed( $subscription, $order );
 		}
 		if ( null !== $decision['schedule'] ) {
 			$delay = P2Flux_WC_Subscriptions::retry_delay( $subscription, $order, $decision );

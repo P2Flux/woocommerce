@@ -521,6 +521,14 @@ class P2Flux_WC_Native_Subscription {
 	}
 
 	/**
+	 * @param WC_Order $order Order whose charge failed.
+	 * @return void
+	 */
+	public function after_failed( $order ) {
+		P2Flux_WC_Native_Scheduler::after_failed( $this, $order );
+	}
+
+	/**
 	 * @param WC_Order $order Order whose period passed.
 	 * @return void
 	 */

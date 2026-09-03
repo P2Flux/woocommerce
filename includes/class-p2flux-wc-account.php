@@ -118,7 +118,7 @@ class P2Flux_WC_Account {
 	 * @return void
 	 */
 	public static function restore() {
-		$subscription = self::authorized_subscription();
+		$subscription = self::authorized_subscription( true );
 		$authorization = P2Flux_WC_Auth_History::active( $subscription );
 		$capability    = $authorization ? P2Flux_WC_Auth_History::capability( $subscription, $authorization['id'] ) : null;
 
@@ -150,7 +150,7 @@ class P2Flux_WC_Account {
 	 * @return void
 	 */
 	public static function reauth() {
-		$subscription = self::authorized_subscription();
+		$subscription = self::authorized_subscription( true );
 		$collection   = P2Flux_WC_Collection::get( $subscription );
 		$active       = P2Flux_WC_Auth_History::active( $subscription );
 
@@ -264,7 +264,7 @@ class P2Flux_WC_Account {
 	 * @return void
 	 */
 	public static function retry() {
-		$subscription = self::authorized_subscription();
+		$subscription = self::authorized_subscription( true );
 		$collection   = P2Flux_WC_Collection::get( $subscription );
 		$order_id     = (int) $collection['renewal_order_id'];
 
@@ -347,7 +347,7 @@ class P2Flux_WC_Account {
 	 *
 	 * @return WC_Subscription
 	 */
-	private static function authorized_subscription() {
+	private static function authorized_subscription( $collecting = false ) {
 		check_ajax_referer( 'p2flux_wc', 'nonce' );
 
 		$ref          = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
@@ -355,6 +355,11 @@ class P2Flux_WC_Account {
 
 		if ( ! $subscription || ! self::owned_by_current_user( $subscription ) ) {
 			wp_send_json_error( array( 'message' => __( 'Not allowed.', 'p2flux-for-woocommerce' ) ), 403 );
+		}
+
+		// Anything that could lead to a charge is closed to a cancelled or expired subscription, whoever asks.
+		if ( $collecting && in_array( $subscription->get_status(), array( 'cancelled', 'pending-cancel', 'expired' ), true ) ) {
+			wp_send_json_error( array( 'message' => __( 'This subscription is no longer collecting payments.', 'p2flux-for-woocommerce' ) ), 400 );
 		}
 
 		return $subscription;
