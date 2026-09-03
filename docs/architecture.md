@@ -225,3 +225,49 @@ that touches the plugin.
 
 **Compatibility with the current commercial WooCommerce Subscriptions release must still be validated
 before public release.** Passing against the 8.2.0 core is not that validation.
+
+## Native subscriptions
+
+The plugin's own recurring engine, for stores without WooCommerce Subscriptions. The shared classes
+never learned a second API: a `P2Flux_WC_Native_Subscription` is a row in `{prefix}p2flux_wc_subscriptions`
+that exposes the same surface a `WC_Subscription` does (status, meta, billing period, customer, related
+orders), and `P2Flux_WC_Subscriptions` is the one place a subscription is found - from an order or from a
+reference (`wcs:12`, `native:7`) - so ids from two engines never collide. Locks are keyed per engine.
+
+**Storage.** Columns for what is listed and scheduled; a JSON `meta` column for what the shared classes
+read and write (authorization history as ciphertext, collection state). Writes are whole-row and
+compare-and-set on `meta_version`, portable to the MySQL 5.5 / MariaDB 10.1 WordPress declares; every
+financial writer also holds the per-subscription lock.
+
+**Calendar.** `P2Flux_WC_Calendar` computes every due instant from the anchor and the cycle number, in
+UTC: Jan 31 stays the 31st and clamps only in shorter months; Feb 29 yearly maps to Feb 28 off leap
+years. The anchor is `auth.start + paid_period × period`, fixed when the first payment settles.
+
+**The on-chain period is a duplicate gate, not the schedule.** A renewal order carries its due instant;
+the period that instant falls in is the only one it may use. The charger asks the engine before
+claiming a period: earlier → wait (`CYCLE_NOT_OPEN`, retried at the boundary plus a grace); later →
+`CYCLE_PERIOD_PASSED`, and the renewal is a miss. A later period never pays an older invoice.
+
+**Activation window.** A signup may use exactly one period - the one open when the authorization was
+verified - and at most 24 hours (`activation_deadline = min(start + 24 h, end of that period)`; the
+dev fixture shortens it with the period, in test mode only). Retries inside the window are clamped to
+it. Past it, without a charge sent: parent order cancelled, subscription **expired** (never active),
+jobs dropped, setup session discarded - and the encrypted authorization kept, so the customer can
+revoke it from My Account. A charge sent inside the window keeps reconciling after it; exact settlement
+still activates. FORGOTTEN_SIGNUP_CAN_AUTO_CHARGE_LATER: NO.
+
+**Misses.** `after_missed` marks the renewal order failed (still payable by hand through the one-time
+path, which marks the period MANUAL), counts the miss for diagnostics, clears dunning, and leaves the
+subscription **on hold**. Nothing cancels automatically. When the clock reaches a later cycle, at most
+one currently eligible cycle is attempted; every older one is recorded as skipped in one note. Long
+downtime creates no historical orders. Only a person cancels.
+
+**Emails.** Two `WC_Email` classes: action required (balance, allowance, re-authorization, missed - once
+per order per reason, never while confirming or reconciling) and cancellation (never for an expired
+signup). WooCommerce's generic failed-order email is suppressed for native orders.
+
+**One gateway.** A native product is paid through P2Flux only, enforced in every layer: the available
+gateways filter, classic checkout validation, the Store API `p2flux_native` payment requirement and
+checkout validation, order-pay, and `woocommerce_valid_order_statuses_for_payment_complete` returning
+nothing for a native order with another method. Ordinary carts, one-time P2Flux orders and
+WCS-managed products are untouched.

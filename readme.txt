@@ -4,7 +4,7 @@ Tags: woocommerce, payments, usdc, crypto, subscriptions
 Requires at least: 6.5
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,15 +17,34 @@ is no account to open, no balance to withdraw and no third party holding your re
 never sits anywhere on its way to you.
 
 Subscriptions work the same way. The customer signs one authorization in their wallet, and after
-that WooCommerce Subscriptions decides when a renewal is due and this plugin collects it. The
-customer's wallet is never asked again, and the amount, the wallet it pays and the billing period
-are fixed by what they signed - a merchant cannot change them afterwards, which is the point.
+that the store decides when a renewal is due and this plugin collects it. The customer's wallet is
+never asked again, and the amount, the wallet it pays and the billing period are fixed by what they
+signed - a merchant cannot change them afterwards, which is the point.
+
+= Native Simple Subscriptions =
+
+Simple recurring products can use P2Flux Native Subscriptions without any separate subscription
+extension: WooCommerce plus this plugin is enough. Tick "P2Flux recurring subscription" on an
+ordinary simple product, choose daily, weekly, monthly or yearly, and the product's price becomes
+the recurring amount. The plugin creates a renewal order each period, collects it, and shows the
+subscription under My Account → USDC subscriptions and WooCommerce → P2Flux Subscriptions.
+
+Native v1 supports fixed-price, non-taxable virtual subscription products, priced in US dollars,
+bought one at a time and on their own. Taxes, coupons, shipping, free trials, sign-up fees and
+variable subscriptions are not supported in native mode. Native subscription products are paid
+through P2Flux only; other WooCommerce gateways cannot be used for them. Normal WooCommerce
+products continue to use your existing payment gateways - the P2Flux-only requirement applies only
+to products using P2Flux Native Subscriptions.
+
+If you already run WooCommerce Subscriptions, it keeps working as before and the two coexist; a
+product belongs to one of them, never both.
 
 = What you need =
 
 * A wallet address on Base that you control. Payments arrive there directly.
 * Prices in USD for subscriptions. One-time payments work in any currency the plugin can convert.
-* WooCommerce Subscriptions, if you want recurring payments.
+* For advanced subscription features (trials, sign-up fees, variable subscriptions, switching),
+  WooCommerce Subscriptions. Simple fixed subscriptions need nothing extra.
 
 = Fees =
 
@@ -131,6 +150,35 @@ subscription priced in another currency would drift away from its own price as t
 and neither you nor the customer would have agreed to what it became. One-time payments convert
 normally.
 
+= Do I need WooCommerce Subscriptions? =
+
+Not for simple fixed subscriptions. P2Flux Native Subscriptions handle a fixed price, one product,
+one interval, with renewals, dunning, cancellation and refunds. WooCommerce Subscriptions is
+still the right choice for free trials, sign-up fees, variable subscriptions, switching and
+proration, which native mode intentionally does not do.
+
+Feature comparison - P2Flux Native / WooCommerce Subscriptions: simple fixed subscription yes/yes;
+USDC recurring yes/via P2Flux; free trial no/WCS may support; sign-up fee no/WCS may support;
+variable subscriptions no/WCS may support; switching and proration no/WCS may support; multiple
+advanced lifecycle features no/yes.
+
+= How does a native subscription start? =
+
+The customer authorizes it in their wallet at checkout and the first payment is collected right
+away. The first payment must complete shortly after authorization; if the setup expires before it
+does, the subscription is marked expired, it never activates, and nothing is charged automatically
+later. The customer simply starts a new order. An expired signup keeps its unused wallet
+authorization on record so the customer can revoke it from My Account.
+
+= What happens when a native renewal cannot be collected? =
+
+The renewal order is marked failed, the subscription goes on hold, and the customer is emailed what
+to do (add USDC, restore the approval, or authorize again). Retries stay inside the renewal's own
+billing period. A period that passes unpaid is never collected later, there is no catch-up billing,
+and the subscription is not cancelled automatically however many renewals are missed: it stays on
+hold until a later payment succeeds or somebody cancels it. If the store was offline for a while,
+at most one payment is attempted when it comes back - the current one.
+
 = Where are subscription authorizations stored? =
 
 Encrypted, in your own database, and never in a log, a page or a URL. For stronger protection add a
@@ -151,6 +199,11 @@ working while new ones use the new key.
 4. Gateway settings, including the test and live environments.
 
 == Changelog ==
+
+= 1.1.0 =
+* P2Flux Native Subscriptions: simple fixed recurring products without WooCommerce Subscriptions.
+* A "USDC approval for subscriptions" setting: unlimited, or a number of billing periods.
+* Re-authorize from My Account after a price change; hard P2Flux-only enforcement for native products.
 
 = 1.0.0 =
 * One-time USDC payments on Base, classic and block checkout.

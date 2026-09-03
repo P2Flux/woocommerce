@@ -50,12 +50,23 @@ includes/
   class-p2flux-wc-account.php       My Account: restore approval, retry, revoke
   class-p2flux-wc-admin.php         order screen box, notices
   class-p2flux-wc-blocks.php        block checkout integration
+  class-p2flux-wc-subscriptions.php one place that finds a subscription, whichever engine owns it
+  class-p2flux-wc-native-*.php      native subscriptions: record + store, scheduler, product/cart/gateway rules,
+                                    account page, admin screen, emails
+  class-p2flux-wc-calendar.php      UTC due dates from an anchor: month-end clamp, leap years
+  emails/, ../templates/emails/     the two native WooCommerce emails
   vendor/p2flux/                    the PHP SDK, namespaced for this plugin, curl-free
 assets/                             checkout, blocks, admin and account scripts (no build step)
 tests/unit.php                      offline: money, decisions, crypto, history
 tests/integration.php               offline: the cross-class invariants, against a stub API
+tests/native.php                    offline: the native engine (activation window, misses, downtime, expiry)
 dev/                                docker store, release checks, the dev-only period fixture
 ```
+
+Two engines can own a subscription: WooCommerce Subscriptions, when installed, and the plugin's own
+native subscriptions (fixed-price, non-taxable virtual products, paid through P2Flux only). They
+coexist; a product belongs to one. Everything that charges, repairs, refunds or displays a
+subscription works on either through `P2Flux_WC_Subscriptions`.
 
 The design and the invariants it protects are in [`docs/architecture.md`](docs/architecture.md).
 Read it before changing anything under `includes/` that touches an order's paid state.
