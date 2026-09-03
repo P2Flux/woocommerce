@@ -149,7 +149,13 @@ final class P2FluxClient
      * fragment; `salt` identifies this exact setup, so a capability finalized from a different one
      * can be told apart later (compare it against the salt in status()).
      *
-     * @param array{recipient: string, amount: string, period: int, end?: int} $terms
+     * `allowance` bounds the standing ERC-20 allowance the hosted checkout asks the customer for:
+     * 'unlimited' (the default: renewals never need the wallet again), 'until_end' (needs `end`),
+     * or ['periods' => N] for N charges' worth, after which your restore flow asks again. Whatever
+     * the mode, the allowance only reaches the recurring contract, which moves nothing the signed
+     * authorization does not permit.
+     *
+     * @param array{recipient: string, amount: string, period: int, end?: int, allowance?: string|array{periods: int}} $terms
      * @return array<string, mixed>
      */
     public function createSubscription(array $terms): array

@@ -96,6 +96,12 @@ check( 'the ceiling is enforced', 'too_large' === P2Flux_WC_Money::check_bounds(
 
 // A contract period must never be LONGER than Woo's interval, or renewals arrive early and answer
 // NOT_DUE forever. Hence 28 days for a month and 365 for a year.
+// The allowance setting maps to the API's term: unlimited unless a sane number of periods.
+check( 'unlimited stays unlimited', 'unlimited' === P2Flux_WC_Money::allowance_term( 'unlimited' ) );
+check( 'an empty setting is unlimited', 'unlimited' === P2Flux_WC_Money::allowance_term( '' ) );
+check( '12 periods', array( 'periods' => 12 ) === P2Flux_WC_Money::allowance_term( '12' ) );
+check( 'nonsense is unlimited, never zero', 'unlimited' === P2Flux_WC_Money::allowance_term( '0' ) && 'unlimited' === P2Flux_WC_Money::allowance_term( '99999' ) );
+
 check( 'a month is 28 days, deliberately short', 2419200 === P2Flux_WC_Money::period_seconds( 'month', 1 ) );
 check( 'a year is 365 days', 31536000 === P2Flux_WC_Money::period_seconds( 'year', 1 ) );
 check( 'a week is exact', 604800 === P2Flux_WC_Money::period_seconds( 'week', 1 ) );

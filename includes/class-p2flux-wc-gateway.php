@@ -114,6 +114,18 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 				'placeholder' => '0.92',
 				'description' => __( 'For a euro store where 1 USDC costs 0.92 EUR, enter 0.92.', 'p2flux-for-woocommerce' ),
 			),
+			'allowance'   => array(
+				'title'       => __( 'USDC approval for subscriptions', 'p2flux-for-woocommerce' ),
+				'type'        => 'select',
+				'options'     => array(
+					'unlimited' => __( 'Unlimited — one approval, the wallet is never asked again (default)', 'p2flux-for-woocommerce' ),
+					'12'        => __( '12 billing periods, then the customer approves again', 'p2flux-for-woocommerce' ),
+					'24'        => __( '24 billing periods, then the customer approves again', 'p2flux-for-woocommerce' ),
+					'36'        => __( '36 billing periods, then the customer approves again', 'p2flux-for-woocommerce' ),
+				),
+				'default'     => 'unlimited',
+				'description' => __( 'How much USDC spending the customer’s wallet approves for the P2Flux recurring contract at signup. The approval can only ever be used for the terms the customer signed; a bounded one limits what a fault in that contract could reach, at the cost of a wallet prompt when it runs out. Existing subscriptions keep the approval they were set up with.', 'p2flux-for-woocommerce' ),
+			),
 			'debug'       => array(
 				'title'   => __( 'Debug log', 'p2flux-for-woocommerce' ),
 				'type'    => 'checkbox',
@@ -383,6 +395,7 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 					'recipient' => $recipient,
 					'amount'    => P2Flux_WC_Money::format( $units ),
 					'period'    => $period,
+					'allowance' => P2Flux_WC_Money::allowance_term( (string) $this->get_option( 'allowance', 'unlimited' ) ),
 				)
 			);
 		} catch ( \Exception $e ) {

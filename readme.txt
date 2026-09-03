@@ -116,6 +116,14 @@ payment differ from the renewals - are unsupported for the same reason. P2Flux i
 for such a cart, rather than selling a subscription it cannot renew; the customer pays with another
 method, or removes the extra item.
 
+= Why does the wallet approve unlimited USDC at signup? =
+
+Because the subscription has no end and the approval can only ever be used for the terms the
+customer signed: it is granted to the P2Flux recurring contract, which moves nothing a signed
+authorization does not permit. If you would rather bound it, the "USDC approval for subscriptions"
+setting asks the wallet for 12, 24 or 36 billing periods' worth instead; when that runs out the
+customer's account page offers "Restore USDC approval" and the renewal is collected right after.
+
 = Can I price subscriptions in euros? =
 
 Not in this version. A recurring authorization fixes one USDC amount for its whole life, so a

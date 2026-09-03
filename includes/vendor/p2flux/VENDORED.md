@@ -1,6 +1,6 @@
 # Vendored: p2flux/p2flux-php
 
-Source: https://github.com/P2Flux/sdk-php at `v0.6.0`, copied by `dev/vendor-sdk.sh`.
+Source: https://github.com/P2Flux/sdk-php at `v0.6.1`, copied by `dev/vendor-sdk.sh`.
 
 Two edits, both mechanical:
 

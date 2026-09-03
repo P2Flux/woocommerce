@@ -181,11 +181,13 @@ class P2Flux_WC_Account {
 		}
 
 		try {
-			$setup = P2Flux_WC_Client::for_environment( $environment )->createSubscription(
+			$settings = get_option( 'woocommerce_p2flux_settings', array() );
+			$setup    = P2Flux_WC_Client::for_environment( $environment )->createSubscription(
 				array(
 					'recipient' => $recipient,
 					'amount'    => P2Flux_WC_Money::format( $units ),
 					'period'    => $period,
+					'allowance' => P2Flux_WC_Money::allowance_term( isset( $settings['allowance'] ) ? (string) $settings['allowance'] : 'unlimited' ),
 				)
 			);
 		} catch ( \Exception $e ) {

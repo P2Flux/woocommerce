@@ -216,6 +216,26 @@ class P2Flux_WC_Money {
 	}
 
 	/**
+	 * The `allowance` term for a subscription setup, from the gateway setting.
+	 *
+	 * The setting names how many billing periods the customer's wallet approves at once: 'unlimited'
+	 * (one approval, never asked again - the default) or a whole number of periods, after which the
+	 * account page's "Restore USDC approval" flow asks the customer again. The allowance only ever
+	 * reaches the recurring contract, which moves nothing the signed authorization does not permit.
+	 *
+	 * @param string $setting Setting value.
+	 * @return string|array{periods:int} What createSubscription() is given.
+	 */
+	public static function allowance_term( $setting ) {
+		$periods = (int) $setting;
+		if ( $periods < 1 || $periods > 1200 ) {
+			return 'unlimited';
+		}
+
+		return array( 'periods' => $periods );
+	}
+
+	/**
 	 * Is this amount sellable through P2Flux?
 	 *
 	 * @param int  $units     Micro-USDC.
