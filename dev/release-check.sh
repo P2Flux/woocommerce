@@ -33,7 +33,7 @@ done < <(find "$root/includes" "$root/p2flux-for-woocommerce.php" "$root/uninsta
 grep -q "p2s2\." "$root/readme.txt" && note "readme.txt exposes a capability prefix"
 grep -qi "60.second\|short.period\|P2FLUX_WC_DEV" "$root/readme.txt" && note "readme.txt documents the development fixture"
 # The vendored SDK must be the release both SDKs share.
-grep -q "v0.6.0" "$root/includes/vendor/p2flux/VENDORED.md" || note "vendored SDK is not v0.6.0"
+grep -q "v0.6.1" "$root/includes/vendor/p2flux/VENDORED.md" || note "vendored SDK is not v0.6.1"
 # The bundled zip: build it the way the release does, and look inside.
 tmp="$(mktemp -d)"
 ( cd "$root" && git archive --format=tar --prefix=p2flux-for-woocommerce/ HEAD | tar -x -C "$tmp" ) 2>/dev/null
@@ -57,6 +57,7 @@ rm -rf "$tmp"
 # The offline suites.
 php "$root/tests/unit.php" >/dev/null || note "the unit suite does not pass"
 php "$root/tests/integration.php" >/dev/null || note "the invariant suite does not pass"
+php "$root/tests/native.php" >/dev/null || note "the native subscription suite does not pass"
 
 [ "$fail" -eq 0 ] && echo "release checks passed"
 exit "$fail"
