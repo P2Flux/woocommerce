@@ -23,9 +23,7 @@ class P2Flux_WC_Native_Store {
 	public static function row( $id ) {
 		global $wpdb;
 
-		$table = P2Flux_WC_Native_Subscription::table();
-
-		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", (int) $id ), ARRAY_A ) ?: null;
+		return $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', P2Flux_WC_Native_Subscription::table(), (int) $id ), ARRAY_A ) ?: null; // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 	}
 
 	/**
@@ -35,7 +33,7 @@ class P2Flux_WC_Native_Store {
 	public static function insert( array $row ) {
 		global $wpdb;
 
-		$ok = $wpdb->insert( P2Flux_WC_Native_Subscription::table(), $row );
+		$ok = $wpdb->insert( P2Flux_WC_Native_Subscription::table(), $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 
 		return $ok ? (int) $wpdb->insert_id : 0;
 	}
@@ -68,8 +66,8 @@ class P2Flux_WC_Native_Store {
 		$values[] = (int) $id;
 		$values[] = (int) $version;
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sets holds whitelisted column names with placeholders; every value goes through prepare().
-		$rows = $wpdb->query( $wpdb->prepare( "UPDATE {$table} SET " . implode( ', ', $sets ) . ' WHERE id = %d AND meta_version = %d', $values ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- $sets holds whitelisted column names with placeholders and the table is $wpdb->prefix plus a constant; every value goes through prepare().
+		$rows = $wpdb->query( $wpdb->prepare( 'UPDATE %i SET ' . implode( ', ', $sets ) . ' WHERE id = %d AND meta_version = %d', array_merge( array( $table ), $values ) ) );
 
 		return 1 === (int) $rows;
 	}
@@ -81,8 +79,7 @@ class P2Flux_WC_Native_Store {
 	public static function rows_for_user( $user_id ) {
 		global $wpdb;
 
-		$table = P2Flux_WC_Native_Subscription::table();
-		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE user_id = %d ORDER BY id DESC", (int) $user_id ), ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM %i WHERE user_id = %d ORDER BY id DESC', P2Flux_WC_Native_Subscription::table(), (int) $user_id ), ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 
 		return $rows ? $rows : array();
 	}
@@ -95,8 +92,7 @@ class P2Flux_WC_Native_Store {
 	public static function rows_all( $limit, $offset ) {
 		global $wpdb;
 
-		$table = P2Flux_WC_Native_Subscription::table();
-		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} ORDER BY id DESC LIMIT %d OFFSET %d", (int) $limit, (int) $offset ), ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM %i ORDER BY id DESC LIMIT %d OFFSET %d', P2Flux_WC_Native_Subscription::table(), (int) $limit, (int) $offset ), ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 
 		return $rows ? $rows : array();
 	}
@@ -107,9 +103,7 @@ class P2Flux_WC_Native_Store {
 	public static function count_all() {
 		global $wpdb;
 
-		$table = P2Flux_WC_Native_Subscription::table();
-
-		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', P2Flux_WC_Native_Subscription::table() ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 	}
 
 	/**
@@ -119,13 +113,13 @@ class P2Flux_WC_Native_Store {
 	public static function rows_due_before( $before ) {
 		global $wpdb;
 
-		$table = P2Flux_WC_Native_Subscription::table();
-		$at    = gmdate( 'Y-m-d H:i:s', (int) $before );
-		$rows  = $wpdb->get_results(
+		$at   = gmdate( 'Y-m-d H:i:s', (int) $before );
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE ( status IN ('active','on-hold') AND next_payment_at IS NOT NULL AND next_payment_at <= %s )
+				"SELECT * FROM %i WHERE ( status IN ('active','on-hold') AND next_payment_at IS NOT NULL AND next_payment_at <= %s )
 				 OR ( status = 'pending' AND activation_deadline IS NOT NULL AND activation_deadline <= %s )
 				 OR ( status = 'pending' AND activation_deadline IS NULL AND created_at <= %s ) ORDER BY id ASC LIMIT 200",
+				P2Flux_WC_Native_Subscription::table(),
 				$at,
 				$at,
 				gmdate( 'Y-m-d H:i:s', (int) $before - P2Flux_WC_Native_Subscription::ACTIVATION_TTL )

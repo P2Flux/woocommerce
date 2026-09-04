@@ -23,4 +23,4 @@ if ( '' !== $account_url ) {
 if ( $additional_content ) {
 	echo esc_html( wp_strip_all_tags( wptexturize( $additional_content ) ) ) . "\n\n";
 }
-echo esc_html( wp_strip_all_tags( wptexturize( apply_filters( 'woocommerce_email_footer_text', get_option( 'woocommerce_email_footer_text' ) ) ) ) );
+echo esc_html( wp_strip_all_tags( wptexturize( apply_filters( 'woocommerce_email_footer_text', get_option( 'woocommerce_email_footer_text' ) ) ) ) ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WooCommerce's own email hook.

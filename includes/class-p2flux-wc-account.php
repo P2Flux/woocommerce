@@ -294,7 +294,7 @@ class P2Flux_WC_Account {
 	 */
 	public static function reauthorized() {
 		$subscription = self::authorized_subscription( true );
-		$capability   = isset( $_POST['subscription_capability'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription_capability'] ) ) : '';
+		$capability   = isset( $_POST['subscription_capability'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription_capability'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_subscription() before this runs.
 		$collection   = P2Flux_WC_Collection::get( $subscription );
 		$order_id     = (int) $collection['renewal_order_id'];
 		$order        = $order_id ? wc_get_order( $order_id ) : null;
@@ -391,7 +391,7 @@ class P2Flux_WC_Account {
 	public static function revoked() {
 		$subscription  = self::authorized_subscription();
 		$authorization = P2Flux_WC_Auth_History::active( $subscription );
-		$hash          = isset( $_POST['tx_hash'] ) ? sanitize_text_field( wp_unslash( $_POST['tx_hash'] ) ) : '';
+		$hash          = isset( $_POST['tx_hash'] ) ? sanitize_text_field( wp_unslash( $_POST['tx_hash'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_subscription() before this runs.
 
 		/*
 		 * The browser says the wallet revoked. That is a claim; the chain is the fact. Ask P2Flux

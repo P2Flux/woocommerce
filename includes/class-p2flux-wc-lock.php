@@ -61,7 +61,7 @@ class P2Flux_WC_Lock {
 		 * transient either, for the same cache reason. This is the INSERT WordPress core itself
 		 * uses for its own upgrade lock.
 		 */
-		$rows = $wpdb->query(
+		$rows = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the lock lives on the options table's unique index; it must never be read from cache.
 			$wpdb->prepare(
 				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
 				$name,
@@ -77,7 +77,7 @@ class P2Flux_WC_Lock {
 		}
 
 		// Straight to the table: an object cache may still be serving the value we are racing.
-		$current = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name ) );
+		$current = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the lock lives on the options table's unique index; it must never be read from cache.
 		if ( ! is_string( $current ) ) {
 			return false;
 		}
@@ -92,7 +92,7 @@ class P2Flux_WC_Lock {
 		 * is doing the same thing a microsecond earlier, its write changes the value and this
 		 * UPDATE matches nothing. One survivor, without a transaction.
 		 */
-		$rows = $wpdb->query(
+		$rows = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the lock lives on the options table's unique index; it must never be read from cache.
 			$wpdb->prepare(
 				"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
 				$value,
@@ -125,7 +125,7 @@ class P2Flux_WC_Lock {
 	public static function still_ours( $subscription_id, $token ) {
 		global $wpdb;
 
-		$current = $wpdb->get_var(
+		$current = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the lock lives on the options table's unique index; it must never be read from cache.
 			$wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::option_name( $subscription_id ) )
 		);
 		if ( ! is_string( $current ) ) {
@@ -152,7 +152,7 @@ class P2Flux_WC_Lock {
 		// Conditional on the token: a lease that already expired and was taken over belongs to
 		// someone else now, and deleting it would hand a third process a lock two others think they
 		// hold.
-		$wpdb->query(
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the lock lives on the options table's unique index; it must never be read from cache.
 			$wpdb->prepare(
 				"DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value LIKE %s",
 				$name,

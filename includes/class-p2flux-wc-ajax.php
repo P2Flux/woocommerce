@@ -47,14 +47,14 @@ class P2Flux_WC_Ajax {
 			wp_send_json_error( array( 'code' => 'FORBIDDEN' ), 403 );
 		}
 
-		$hash = isset( $_POST['tx_hash'] ) ? sanitize_text_field( wp_unslash( $_POST['tx_hash'] ) ) : '';
+		$hash = isset( $_POST['tx_hash'] ) ? sanitize_text_field( wp_unslash( $_POST['tx_hash'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_order() before this runs.
 		if ( ! preg_match( '/^0x[0-9a-fA-F]{64}$/', $hash ) ) {
 			wp_send_json_error( array( 'code' => 'INVALID_TX' ), 400 );
 		}
 
 		// The receipt is a courier from the checkout: it lets the API answer without re-reading the
 		// chain. A bad one costs nothing - verification falls back to the full check.
-		$receipt = isset( $_POST['settlement_receipt'] ) ? sanitize_text_field( wp_unslash( $_POST['settlement_receipt'] ) ) : '';
+		$receipt = isset( $_POST['settlement_receipt'] ) ? sanitize_text_field( wp_unslash( $_POST['settlement_receipt'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_order() before this runs.
 		$intent  = P2Flux_WC_Intents::active( $order );
 		if ( ! $intent ) {
 			wp_send_json_error( array( 'code' => 'NO_INTENT' ), 400 );
@@ -149,7 +149,7 @@ class P2Flux_WC_Ajax {
 			wp_send_json_error( array( 'code' => 'NOT_A_SUBSCRIPTION' ), 400 );
 		}
 
-		$capability = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
+		$capability = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_order() before this runs.
 
 		if ( '' !== $capability && ! P2Flux_WC_Auth_History::active( $subscription ) ) {
 			$stored = P2Flux_WC_Activation::store( $subscription, $order, $capability );
@@ -180,7 +180,7 @@ class P2Flux_WC_Ajax {
 	 */
 	public static function refund_prepare() {
 		$order = self::admin_order();
-		$units = isset( $_POST['units'] ) ? (int) $_POST['units'] : 0;
+		$units = isset( $_POST['units'] ) ? (int) $_POST['units'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in admin_order() before this runs.
 
 		$prepared = P2Flux_WC_Refunds::prepare( $order, $units );
 		if ( is_wp_error( $prepared ) ) {
@@ -197,7 +197,7 @@ class P2Flux_WC_Ajax {
 	 */
 	public static function refund_verify() {
 		$order = self::admin_order();
-		$hash  = isset( $_POST['refund_tx_hash'] ) ? sanitize_text_field( wp_unslash( $_POST['refund_tx_hash'] ) ) : '';
+		$hash  = isset( $_POST['refund_tx_hash'] ) ? sanitize_text_field( wp_unslash( $_POST['refund_tx_hash'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in admin_order() before this runs.
 
 		if ( '' !== $hash && ! preg_match( '/^0x[0-9a-fA-F]{64}$/', $hash ) ) {
 			wp_send_json_error( array( 'message' => __( 'That is not a transaction hash.', 'p2flux-for-woocommerce' ) ), 400 );

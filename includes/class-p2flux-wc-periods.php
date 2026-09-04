@@ -117,10 +117,10 @@ class P2Flux_WC_Periods {
 	public static function get( $auth_id, $period_index ) {
 		global $wpdb;
 
-		$table = self::table();
-		$row   = $wpdb->get_row(
+		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE auth_id = %s AND period_index = %d",
+				'SELECT * FROM %i WHERE auth_id = %s AND period_index = %d',
+				self::table(),
 				strtolower( $auth_id ),
 				$period_index
 			),
@@ -149,12 +149,11 @@ class P2Flux_WC_Periods {
 		$order_id     = (int) $claim['order_id'];
 		$now          = current_time( 'mysql', true );
 
-		$table    = self::table();
-		$inserted = $wpdb->query(
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- the table name is $wpdb->prefix plus a constant.
+		$inserted = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 			$wpdb->prepare(
-				"INSERT IGNORE INTO {$table} (auth_id, period_index, subscription_id, order_id, state, units, environment, engine, created_at, updated_at)
-				 VALUES (%s, %d, %d, %d, %s, %d, %s, %s, %s, %s)",
+				'INSERT IGNORE INTO %i (auth_id, period_index, subscription_id, order_id, state, units, environment, engine, created_at, updated_at)
+				 VALUES (%s, %d, %d, %d, %s, %d, %s, %s, %s, %s)',
+				self::table(),
 				$auth_id,
 				$period_index,
 				(int) $claim['subscription_id'],
@@ -212,7 +211,7 @@ class P2Flux_WC_Periods {
 			$data['settled_at'] = current_time( 'mysql', true );
 		}
 
-		$wpdb->update(
+		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
 			self::table(),
 			$data,
 			array(
@@ -231,10 +230,8 @@ class P2Flux_WC_Periods {
 	public static function stale_charging( $before ) {
 		global $wpdb;
 
-		$table = self::table();
-
-		return $wpdb->get_results(
-			$wpdb->prepare( "SELECT * FROM {$table} WHERE state = %s AND updated_at < %s ORDER BY id ASC LIMIT 100", self::CHARGING, gmdate( 'Y-m-d H:i:s', (int) $before ) ),
+		return $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
+			$wpdb->prepare( 'SELECT * FROM %i WHERE state = %s AND updated_at < %s ORDER BY id ASC LIMIT 100', self::table(), self::CHARGING, gmdate( 'Y-m-d H:i:s', (int) $before ) ),
 			ARRAY_A
 		);
 	}
@@ -262,10 +259,8 @@ class P2Flux_WC_Periods {
 	public static function for_order( $order_id ) {
 		global $wpdb;
 
-		$table = self::table();
-
-		return $wpdb->get_results(
-			$wpdb->prepare( "SELECT * FROM {$table} WHERE order_id = %d ORDER BY id ASC", (int) $order_id ),
+		return $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- the plugin's own table; a ledger read live, never from cache.
+			$wpdb->prepare( 'SELECT * FROM %i WHERE order_id = %d ORDER BY id ASC', self::table(), (int) $order_id ),
 			ARRAY_A
 		);
 	}
