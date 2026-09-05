@@ -1,4 +1,4 @@
-# P2Flux for WooCommerce 1.1.0 — pre-Mainnet validation report (2026-09-03)
+# P2Flux for WooCommerce 1.0.0 — pre-Mainnet validation report (2026-09-03)
 
 Evidence labels: LIVE_CHAIN (Base Sepolia transaction), LIVE_STAGING (real WordPress/WooCommerce staging, no chain tx), LIVE_STAGING_FAULT_INJECTION (staging with the transport wrapper), OFFLINE_INTEGRATION / OFFLINE_UNIT (CLI suites with fakes), CODE_REVIEW, NOT_TESTED.
 
@@ -8,7 +8,7 @@ Funds: BUYER_BALANCE_BEFORE 2.564076 USDC (user topped up +4.00 → 6.564076); M
 
 ## A. Scope and state
 
-- Plugin main @ 3c583b5 (version 1.1.0). Staging: WP 7.1, WC 11.0.1, PHP 8.3 (8.1 CLI runtime also tested), MySQL 8.0, wcs-core 8.2.0 harness, 60 s dev fixture, HPOS switched ON mid-lifecycle (was CPT).
+- Plugin main @ 3c583b5 (the tree released as 1.0.0; it carried the development number 1.1.0 at the time). Staging: WP 7.1, WC 11.0.1, PHP 8.3 (8.1 CLI runtime also tested), MySQL 8.0, wcs-core 8.2.0 harness, 60 s dev fixture, HPOS switched ON mid-lifecycle (was CPT).
 - Core API (feat/charge-recovery) unchanged in this phase; production API stays at e23bd53 (not redeployed).
 - Suites after all fixes: unit 119, integration 42, native 90 — all PASS on PHP 8.3 and 8.1; release gate PASS; Plugin Check 0 errors / 84 style warnings.
 
@@ -55,7 +55,7 @@ EXISTING_WCS_TERMS_IMMUTABLE: YES (LIVE_CHAIN). NEW_WCS_SUB_USES_CURRENT_SETTING
 
 ## F. Storage, upgrade, uninstall, privacy
 
-- Disposable DB copy (dropped afterwards): repeated upgrade schema unchanged; 1.0.x → 1.1.0 adds engine column + native table, keeps period rows; default uninstall keeps data; destructive uninstall (A-01 fix) removes only plugin data. ORIGINAL_STAGING_DB_UNCHANGED: YES (checksums of orders/periods/native identical before and after the copy tests). No DB changes since those tests.
+- Disposable DB copy (dropped afterwards): repeated upgrade schema unchanged; upgrading an earlier development build to this one adds the engine column + native table and keeps period rows; default uninstall keeps data; destructive uninstall (A-01 fix) removes only plugin data. ORIGINAL_STAGING_DB_UNCHANGED: YES (checksums of orders/periods/native identical before and after the copy tests). No DB changes since those tests.
 - HPOS: enabled mid-lifecycle (sync 37 orders, 0 unsynced); order/native lookups, account page, cancel, revoke, refund all ran under HPOS afterwards.
 - PRIVACY_DATA_INVENTORY: native row = user_id (link), product, amounts, dates, status, store payout wallet, auth id (public digest), tx hashes, encrypted authorization (p2fwc1); no name/email/address/IP (those are WooCommerce's).
 - WP_EXPORT_BEHAVIOR: exporter "P2Flux subscriptions" registered; LIVE_STAGING export for user 2 → 1 item, 0 secrets.
@@ -81,11 +81,11 @@ Staging DB after the whole lifecycle: p2s2 plaintext 0 in postmeta / options / w
 
 ## I. Package
 
-`p2flux-for-woocommerce-1.1.0.zip` sha256 `f63aa796222eec9204f1da5a5971bcc4e72dd8c2002f68f88e0b1ad982f12a0d`, 66 files, 472,976 bytes, built by git archive from 3c583b5 (clean tree). Contains no dev/tests/md/git/env/map, no curl_, no fixture/harness/audit references, 0 secret-like strings. Plugin Check 0 errors. External service disclosure and privacy section present in readme.txt.
+The validated package — sha256 `f63aa796222eec9204f1da5a5971bcc4e72dd8c2002f68f88e0b1ad982f12a0d`, 66 files, 472,976 bytes, built by git archive from 3c583b5 (clean tree), before the version was renumbered to 1.0.0 and the Plugin Check warnings were fixed. Contains no dev/tests/md/git/env/map, no curl_, no fixture/harness/audit references, 0 secret-like strings. Plugin Check 0 errors. External service disclosure and privacy section present in readme.txt.
 
 ## J. Docs vs code
 
-readme.txt, README.md, docs/architecture.md and the website page updated for native subscriptions, allowance modes, privacy, 1.1.0 (A-31). Open doc notes: A-10 (guest ajax nonce semantics), A-11/A-35 (settlement receipt trust is an API invariant), A-34 (browser intents at rest).
+readme.txt, README.md, docs/architecture.md and the website page updated for native subscriptions, allowance modes and privacy (A-31). Open doc notes: A-10 (guest ajax nonce semantics), A-11/A-35 (settlement receipt trust is an API invariant), A-34 (browser intents at rest).
 
 ## K. Findings (FOUND → FIXED → REGRESSION TEST ADDED)
 
