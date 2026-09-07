@@ -180,9 +180,8 @@ class P2Flux_WC_Ajax {
 	 */
 	public static function refund_prepare() {
 		$order = self::admin_order();
-		$units = isset( $_POST['units'] ) ? (int) $_POST['units'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in admin_order() before this runs.
 
-		$prepared = P2Flux_WC_Refunds::prepare( $order, $units );
+		$prepared = P2Flux_WC_Refunds::prepare( $order );
 		if ( is_wp_error( $prepared ) ) {
 			wp_send_json_error( array( 'message' => $prepared->get_error_message() ), 400 );
 		}

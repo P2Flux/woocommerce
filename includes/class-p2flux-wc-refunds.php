@@ -42,12 +42,9 @@ class P2Flux_WC_Refunds {
 	 * Reserve this order's refund and get the terms for it.
 	 *
 	 * @param WC_Order $order Order.
-	 * @param int      $units Ignored: v1 refunds in full. Kept so the endpoint's shape can grow.
 	 * @return array<string,mixed>|WP_Error
 	 */
-	public static function prepare( $order, $units = 0 ) {
-		unset( $units );
-
+	public static function prepare( $order ) {
 		$state = self::state( $order );
 		if ( in_array( $state['status'], array( self::REFUNDED, self::SENT ), true ) ) {
 			return new WP_Error( 'p2flux_refunded', __( 'This payment has already been refunded, or a refund is already on its way.', 'p2flux-for-woocommerce' ) );

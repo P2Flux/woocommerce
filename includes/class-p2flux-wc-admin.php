@@ -230,9 +230,32 @@ class P2Flux_WC_Admin {
 			self::notice( __( 'P2Flux is enabled but has no valid payout wallet, so it is not being offered at checkout.', 'p2flux-for-woocommerce' ) );
 		}
 
-		if ( P2Flux_WC_Client::TEST === P2Flux_WC_Client::current_environment() ) {
+		if ( P2Flux_WC_Client::TEST === P2Flux_WC_Client::current_environment() && self::store_screen() ) {
 			self::notice( __( 'P2Flux is in test mode: payments settle on Base Sepolia and move no real money.', 'p2flux-for-woocommerce' ), 'info' );
 		}
+	}
+
+	/**
+	 * Is this a screen where the store's payments are the subject?
+	 *
+	 * Test mode is worth saying where a merchant is looking at orders, subscriptions or WooCommerce
+	 * settings, and nowhere else: the errors above mean the payment method is off and belong on every
+	 * screen, but this one is a standing state and would otherwise follow the merchant around.
+	 *
+	 * @return bool
+	 */
+	private static function store_screen() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen ) {
+			return false;
+		}
+
+		return 0 === strpos( $screen->id, 'woocommerce' )
+			|| in_array(
+				$screen->id,
+				array( 'toplevel_page_woocommerce', 'shop_order', 'edit-shop_order', 'shop_subscription', 'edit-shop_subscription' ),
+				true
+			);
 	}
 
 	/**

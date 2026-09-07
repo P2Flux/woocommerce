@@ -1,5 +1,5 @@
 === P2Flux for WooCommerce ===
-Contributors: modulout
+Contributors: p2flux, modulout
 Tags: woocommerce, payments, usdc, crypto, subscriptions
 Requires at least: 6.5
 Tested up to: 7.1
@@ -73,14 +73,14 @@ a subscription, and transaction hashes for verification. Your customers' browser
 checkout window, which sees only the amount, the recipient and the network - never the product, the
 customer or the order.
 
-Terms of service: https://p2flux.com/terms. Privacy policy: https://p2flux.com/privacy.
+Terms of service: https://p2flux.com/terms.html. Privacy policy: https://p2flux.com/privacy.html.
 
 **Coinbase exchange rates** (https://api.coinbase.com/v2/exchange-rates)
 
 Used only when your store's currency is not USD, to convert a price into USDC. Sent: nothing but the
 request itself; the response is cached for an hour. No order, customer or store data is included.
 
-Terms of service: https://www.coinbase.com/legal/user_agreement. Privacy policy:
+Terms of service: https://www.coinbase.com/legal/developer-platform/terms-of-service. Privacy policy:
 https://www.coinbase.com/legal/privacy.
 
 == Privacy ==
@@ -128,6 +128,8 @@ refund on chain is the USDC the customer paid; the WooCommerce refund record is 
 your store currency, so on a non-USD store the two figures differ by the conversion applied at
 checkout (recurring products are USD-only, so the two always agree there). WooCommerce's normal
 refund button is not offered, because no server can send money out of your wallet - only you can.
+The P2Flux protocol allows exactly one refund per payment, so the plugin offers that refund in full: a
+partial refund would use up the only refund the order will ever have.
 
 = What does the customer see at checkout? =
 
