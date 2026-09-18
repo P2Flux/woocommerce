@@ -195,6 +195,54 @@ change what a customer already authorized.
   carries it from the pay screen to the server, over a same-origin POST with a nonce and the order
   key. No response ever echoes it. No order note, no page, no URL ever carries it.
 
+## Sponsored one-time payments
+
+How the network fee is paid is sealed into the intent at `POST /v1/payments`; the hosted checkout
+never re-routes a one-time payment. So the plugin chooses when it mints
+(`P2Flux_WC_Payments::ensure_intent()`):
+
+- **Sticky mode.** An order with an active intent keeps that intent's mode (a ledger record without
+  `mode` is a 1.0.0 intent and native). The default - sponsored when the `sponsored` setting is
+  `yes`, capabilities say so and the amount covers the fees - applies only to an order with no
+  active intent. A sponsored order drops to native once sponsorship is no longer allowed.
+- **Capabilities fail closed** (`P2Flux_WC_Sponsorship`): `supported`, a USDC token with
+  `payment_token` in `gas_payment_modes`, `operations.one_time_payment === true` and a numeric
+  `fixed_network_fee_units`; anything else is native. 5 s timeout, cached 1 h, 5 min on failure.
+- **Local floor**: `units > intdiv(units, 100) + fixed` - 101011 is the smallest sponsorable amount
+  at a 0.10 USDC fixed fee.
+- **Fallback**: a sponsored create refused with `PAYMENT_TOKEN_GAS_*`, or `AMOUNT_OUT_OF_BOUNDS`,
+  marks capabilities unavailable for 5 minutes and is retried once as native. `NETWORK_ERROR` and
+  `RATE_LIMITED` are never retried: a second slow call would outlast the request.
+- A native create sends exactly the 1.0.0 payload; `gas_payment_mode` only when sponsored.
+- **Switching** (`switch_mode()`, `wc_ajax_p2flux_mode`, 10 s per-order cooldown) runs
+  `recoverPayment` on the active intent first and mints nothing if a payment is found. The mint
+  cooldown is per mode, and an unexpired `replaced` intent of the requested mode is revived rather
+  than minting again, so toggling costs at most one intent of each kind.
+- The verdict's `amount` is the price in both modes, so the settlement comparison and the refund
+  amount (`_p2flux_paid_units`) are unchanged. The buyer's network fee is never refunded.
+- Recurring payments never consult sponsorship.
+
+## Several intents, one order
+
+An order may hold more than one payable intent (a mode switch, an old tab), and the contract does
+not enforce expiry, so any of them can settle:
+
+- Verification uses the intent the browser posts only if `P2Flux_WC_Intents::find()` finds it in the
+  order's own ledger; otherwise the active intent. It only selects which of the order's own
+  intents is verified - the API verdict and the amount check still decide.
+- A settlement on an already-paid order with a new hash is a **duplicate**: intent status
+  `duplicate`, `_p2flux_unexpected_payment` with `duplicate: true`, an order note to refund it,
+  never a second `payment_complete()`. After a settlement, one sibling check is scheduled at
+  `max(sibling expires) + 900`.
+- Minting runs under `P2Flux_WC_Lock::with( 'intent-' . $id )` and re-reads the ledger inside it.
+
+## Scheduler health
+
+`P2Flux_WC_Jobs::health()` answers `missing` (no Action Scheduler) or `late` (a pending `p2flux`
+job more than two hours overdue). It never reads `DISABLE_WP_CRON`, so a store running a server
+cron cannot false-alarm. Shown in `P2Flux_WC_Admin::notices()` on store screens to
+`manage_woocommerce`; never on the frontend, never blocking checkout.
+
 ## Action Scheduler jobs
 
 All in group `p2flux`, all per order, all bounded, all re-reading state before acting.

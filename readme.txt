@@ -51,8 +51,13 @@ product belongs to one of them, never both.
 = Fees =
 
 P2Flux takes 1% of a one-time payment, and 2% plus a fixed 0.10 USDC network fee on a recurring
-charge. The customer pays the gas on a one-time payment; on a renewal the gas is reimbursed out of
-the charge, capped by what the customer signed.
+charge. On a renewal the gas is reimbursed out of the charge, capped by what the customer signed.
+
+A one-time payment's network fee is paid one of two ways. With "No-ETH checkout" on, the customer
+pays it in USDC on top of the price, so they need no ETH, and you pay an additional fixed 0.10 USDC
+out of the amount you receive: a 20.00 USDC order pays you 20.00 - 0.20 - 0.10 = 19.70 USDC. The
+customer can still choose to pay the network fee in ETH themselves, and then you receive the price
+less 1%, as with "No-ETH checkout" off.
 
 = Test it first =
 
@@ -135,7 +140,39 @@ partial refund would use up the only refund the order will ever have.
 
 They choose P2Flux, place the order, and a small P2Flux window opens from that same click: connect
 a wallet, confirm, done. The order's pay screen stays behind it to show progress, and if a browser
-refuses the window it offers a "Pay with your wallet" button that opens it on demand.
+refuses the window it offers a button that opens it on demand - "Pay with USDC — no ETH required"
+when the network fee is paid in USDC.
+
+= Do customers need ETH? =
+
+Not with "No-ETH checkout" on (the default for new installs). The customer pays the price plus the
+network fee in USDC, signs once in their wallet, and P2Flux sends the transaction: their wallet
+needs USDC on Base and no ETH at all. The exact network fee is shown in the P2Flux window before
+they confirm. A customer who holds ETH on Base can choose "I have ETH on Base — pay the network fee
+in ETH" on the pay screen instead. The setting costs you an extra fixed 0.10 USDC per payment made
+that way (see Fees), and it does not apply to subscriptions. Stores upgraded from 1.0.0 keep it off
+until you turn it on under WooCommerce → Settings → Payments → P2Flux.
+
+= How does payment recovery work? =
+
+It is safe for a customer to close the browser after confirming a payment. The payment instruction
+is stored on the order, so the store can find the payment on the blockchain without the customer:
+
+* Automatic checks run about 15 minutes, 1 hour, 6 hours, 24 hours and 48 hours after the payment
+  was started. A payment found is verified and marks the order paid with its exact transaction.
+* A daily sweep re-queues those checks for P2Flux orders from the last week that are still pending.
+* A customer who comes back to the order's payment page is checked first, before being offered to
+  pay, and "I already paid — check my payment" asks at once.
+
+The automatic checks and the sweep, like subscription renewals, run from WooCommerce's Action
+Scheduler, which runs from WP-Cron. On a store with little traffic WP-Cron only runs when someone
+visits, so checks can run late; if WP-Cron is disabled, a server cron must call it. Either way, set
+up a real cron job that runs every few minutes, for example:
+
+`*/5 * * * * curl -s https://example.com/wp-cron.php?doing_wp_cron > /dev/null`
+
+or `wp cron event run --due-now` from WP-CLI. If P2Flux jobs are more than two hours overdue, or
+Action Scheduler is missing, the plugin shows a warning to store managers in the WordPress admin.
 
 = A renewal failed. What now? =
 
@@ -235,6 +272,15 @@ working while new ones use the new key.
 
 == Changelog ==
 
+= 1.1.0 =
+* No-ETH checkout: customers can pay a one-time order's network fee in USDC and need no ETH. On by default for new installs, off for upgrades; costs the merchant an extra fixed 0.10 USDC per payment made that way.
+* Customers can switch to paying the network fee in ETH from the pay screen, and back.
+* A second payment for an order that was already paid is caught, recorded, and flagged for a refund instead of going unnoticed.
+* Verification asks about the payment instruction the customer actually paid, when the order has more than one.
+* A customer returning to the pay screen is checked for an earlier payment before being offered to pay.
+* An admin warning when background jobs (payment recovery, renewals) are more than two hours overdue, or Action Scheduler is missing.
+* Bundled P2Flux PHP SDK updated to v0.7.3.
+
 = 1.0.0 =
 * One-time USDC payments on Base, classic and block checkout; the wallet window opens from the "Place order" click.
 * P2Flux Native Subscriptions: simple fixed-price recurring products without WooCommerce Subscriptions.
@@ -246,6 +292,9 @@ working while new ones use the new key.
 * Test mode on Base Sepolia.
 
 == Upgrade notice ==
+
+= 1.1.0 =
+Adds No-ETH checkout, off on upgraded stores until you enable it (it costs 0.10 USDC per payment made that way). Catches duplicate payments and warns when background jobs stop running.
 
 = 1.0.0 =
 First release.
