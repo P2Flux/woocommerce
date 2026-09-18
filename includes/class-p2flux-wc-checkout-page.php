@@ -226,6 +226,9 @@ class P2Flux_WC_Checkout_Page {
 			'token'    => $intent['intent'],
 			'gas'      => $gas,
 			'switchTo' => $switch_to,
+			// A customer coming back to an intent they were given earlier may already have paid it:
+			// the page asks once before offering to pay. A just-minted intent cannot have been paid.
+			'recheck'  => isset( $intent['created'] ) && time() - (int) $intent['created'] > MINUTE_IN_SECONDS,
 		);
 	}
 

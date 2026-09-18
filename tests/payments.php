@@ -504,6 +504,7 @@ $order  = new_order( 650 );
 $config = pay_config( $order );
 $first  = P2Flux_WC_Intents::active( $order );
 check( 'config token is the active intent', $first['intent'] === $config['token'] && 'pay' === $config['mode'] );
+check( 'a just-minted intent is not re-checked', false === $config['recheck'] );
 check( 'config says sponsored and offers ETH', 'sponsored' === $config['gas'] && 'native' === $config['switchTo'] );
 check( 'the hosted checkout is the test one', 'https://pay-test.p2flux.com' === $config['checkout'] && '/?wc-ajax=p2flux_mode' === $config['ajax']['mode'] );
 
@@ -519,6 +520,10 @@ check( 'a second switch within 10 seconds is refused', false === $again['success
 $config = pay_config( $order );
 check( 'a reload keeps native and mints nothing', 'native' === $config['gas'] && $sent['data']['token'] === $config['token'] && 2 === count( p2flux_test_calls( '/v1/payments' ) ) );
 check( 'and offers the way back', 'sponsored' === $config['switchTo'] );
+$ledger = P2Flux_WC_Intents::all( $order );
+$ledger[ count( $ledger ) - 1 ]['created'] = time() - 600;
+$order->update_meta_data( P2Flux_WC_Intents::LEDGER_META, wp_json_encode( array( 'v' => 1, 'items' => $ledger ) ) );
+check( 'coming back to an older intent asks the page to check for a payment first', true === pay_config( $order )['recheck'] );
 
 unset( $GLOBALS['p2flux_test_transients']['p2flux_wc_mode_650'] );
 $back = ajax( 'mode', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 650, 'order_key' => 'wc_order_key_650', 'mode' => 'sponsored' ) );

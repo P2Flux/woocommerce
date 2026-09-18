@@ -355,6 +355,25 @@
 
 	showMode();
 
+	// Back on this page for an intent handed out earlier: ask once whether it was already paid, and
+	// never offer the pay button in front of a payment that is on its way.
+	if ( 'pay' === config.mode && config.recheck ) {
+		post( config.ajax.check, {} )
+			.then( function ( response ) {
+				var result = response && response.data ? response.data : {};
+				if ( 'paid' === result.status ) {
+					done( result.redirect );
+					return;
+				}
+				if ( 'confirming' === result.status ) {
+					transactionKnown();
+					say( config.i18n.confirming, 'busy' );
+					paymentMayExist();
+				}
+			} )
+			.catch( function () {} );
+	}
+
 	if ( check ) {
 		check.addEventListener( 'click', function () {
 			check.disabled = true;
