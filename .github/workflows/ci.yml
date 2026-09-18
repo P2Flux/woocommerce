@@ -1,0 +1,56 @@
+# Proves the plugin on every push: syntax on the supported PHP range, the three offline suites, and
+# the WordPress security sniffs (escaping, nonces, sanitisation, prepared SQL). No WordPress install,
+# no network, no chain - and nothing here costs anything.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.3']
+    name: PHP ${{ matrix.php }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, sodium, bcmath
+          coverage: none
+      - name: Lint
+        run: find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l > /dev/null
+      - run: php tests/unit.php
+      - run: php tests/integration.php
+      - run: php tests/native.php
+
+  security-sniffs:
+    name: WordPress security sniffs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer
+      - name: Install WordPress Coding Standards
+        run: |
+          composer global config allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
+          composer global require --no-interaction wp-coding-standards/wpcs:^3.1
+      # The plugin's own code only. includes/vendor/ is the vendored P2Flux SDK, which throws
+      # exceptions rather than printing, and is checked in its own repository.
+      - name: Escaping, nonces, sanitisation, prepared SQL
+        run: |
+          ~/.composer/vendor/bin/phpcs --standard=WordPress \
+            --sniffs=WordPress.Security.EscapeOutput,WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput,WordPress.Security.SafeRedirect,WordPress.DB.PreparedSQL,WordPress.DB.PreparedSQLPlaceholders \
+            --extensions=php --ignore=tests/*,dev/*,includes/vendor/* .
