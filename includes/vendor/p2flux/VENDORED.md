@@ -1,6 +1,7 @@
-# Vendored: p2flux/p2flux-php
+# Vendored: p2flux/sdk-php
 
-Source: https://github.com/P2Flux/sdk-php at `v0.6.1`, copied by `dev/vendor-sdk.sh`.
+Source: https://github.com/P2Flux/sdk-php at `v0.7.3` (commit `80d844645d108ecab1f5f41da389fa33e75b0ed8`), copied by `dev/vendor-sdk.sh`
+from the tag itself, not from a working tree.
 
 Two edits, both mechanical:
 

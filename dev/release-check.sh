@@ -35,8 +35,10 @@ done < <(find "$root/includes" "$root/p2flux-for-woocommerce.php" "$root/uninsta
 # example that gets pasted), and the development period fixture must never be described as a feature.
 grep -q "p2s2\." "$root/readme.txt" && note "readme.txt exposes a capability prefix"
 grep -qi "60.second\|short.period\|P2FLUX_WC_DEV" "$root/readme.txt" && note "readme.txt documents the development fixture"
-# The vendored SDK must be the release both SDKs share.
-grep -q "v0.6.1" "$root/includes/vendor/p2flux/VENDORED.md" || note "vendored SDK is not v0.6.1"
+# The vendored SDK must be exactly the v0.7.3 release, copied from the tag. An exact match: a
+# describe string such as `v0.7.3-4-g7cf8626` (a commit AFTER the tag) must fail here.
+grep -qF 'at `v0.7.3` (commit `80d844645d108ecab1f5f41da389fa33e75b0ed8`)' "$root/includes/vendor/p2flux/VENDORED.md" \
+  || note "vendored SDK is not exactly the v0.7.3 tag"
 # The bundled zip: build it the way the release does, and look inside.
 tmp="$(mktemp -d)"
 ( cd "$root" && git archive --format=tar --prefix=p2flux-for-woocommerce/ HEAD | tar -x -C "$tmp" ) 2>/dev/null

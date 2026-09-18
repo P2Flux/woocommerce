@@ -106,6 +106,21 @@ final class P2FluxClient
         /* The customer's contract wallet costs more to validate than the API will spend. Only the
          * customer can fix that, by authorizing from an ordinary wallet. */
         'SIGNATURE_VALIDATION_TOO_EXPENSIVE' => 'CUSTOMER_ACTION_REQUIRED',
+        /* Paying the network fee in the payment token. Unsupported is a fact about the deployment,
+         * not a moment in time: fall back to native gas rather than retrying. An expired quote needs
+         * a fresh price and a fresh signature, which only the customer can give. A sponsored
+         * transaction that failed moved no money - the fee and the operation settle together - so it
+         * is safe to try again with a new quote. */
+        'PAYMENT_TOKEN_GAS_UNSUPPORTED' => 'INVALID_REQUEST',
+        'PAYMENT_TOKEN_GAS_UNAVAILABLE' => 'RETRY_LATER',
+        'PAYMENT_TOKEN_GAS_QUOTE_EXPIRED' => 'CUSTOMER_ACTION_REQUIRED',
+        'PAYMENT_TOKEN_GAS_LIMIT_EXCEEDED' => 'RETRY_LATER',
+        'INVALID_GAS_QUOTE' => 'INVALID_REQUEST',
+        'INSUFFICIENT_PAYMENT_TOKEN_FOR_GAS' => 'CUSTOMER_ACTION_REQUIRED',
+        'SPONSORED_TRANSACTION_FAILED' => 'RETRY_LATER',
+        'SPONSORED_PERMIT_FAILED' => 'RETRY_LATER',
+        // In flight: look the settlement up, never send another one.
+        'SPONSORSHIP_CONFIRMING' => 'WAIT',
     ];
 
     private string $apiUrl;
@@ -156,7 +171,7 @@ final class P2FluxClient
      * authorization does not permit.
      *
      * @param array{recipient: string, amount: string, period: int, end?: int, allowance?: string|array{periods: int}} $terms
-     * @return array<string, mixed>
+     * @return array{setup_token: string, salt: string, amount: string, ...}
      */
     public function createSubscription(array $terms): array
     {
@@ -171,11 +186,28 @@ final class P2FluxClient
      * the customer's wallet must sign. This is what a checkout displays - the token, not the page
      * that opened it, is the source of truth for what is being authorized.
      *
-     * @return array<string, mixed>
+     * @param string|null $gasPaymentMode 'payment_token' also prices the allowance transaction
+     *                                    P2Flux would send for a customer holding no native
+     *                                    currency; requires `$payer`.
+     * @param string|null $payer With `payment_token`: the wallet whose allowance will be set. The
+     *                           price depends on it, which is why it is not known at creation time.
+     * @return array{typed_data: array<string, mixed>, terms?: array<string, mixed>, quote?: string, ...}
      */
-    public function resolveSubscription(string $setupToken): array
-    {
-        [$httpStatus, $body] = $this->post('/v1/subscriptions/resolve', ['setup_token' => $setupToken]);
+    public function resolveSubscription(
+        string $setupToken,
+        ?string $gasPaymentMode = null,
+        ?string $payer = null
+    ): array {
+        $payload = ['setup_token' => $setupToken];
+        /* Zero-native signup: the customer holds no native currency, so instead of sending an
+         * approval they sign one, and this prices the transaction P2Flux will send for them. Both
+         * fields or neither - the quote is for a specific wallet's allowance. */
+        if ($gasPaymentMode !== null && $payer !== null) {
+            $payload['gas_payment_mode'] = $gasPaymentMode;
+            $payload['payer'] = $payer;
+        }
+
+        [$httpStatus, $body] = $this->post('/v1/subscriptions/resolve', $payload);
         $this->throwIfError($httpStatus, $body);
 
         return $body;
@@ -189,15 +221,30 @@ final class P2FluxClient
      * thing your system stores per subscription - treat it like a credential: encrypted at rest,
      * never in a URL, never in a log.
      *
-     * @return array<string, mixed>
+     * @param array<string,string>|null $sponsorship For a customer with no native currency: the
+     *        `quote`, `permit_signature`, `network_fee_signature` and optional `permit_nonce` they
+     *        signed at resolve. The capability is minted first and costs nothing, so a sponsorship
+     *        that fails is reported inside the response (`sponsorship.status`) rather than thrown -
+     *        the subscription exists either way, and the allowance is repairable from the restore
+     *        flow. `ALREADY_SETTLED` means a repeat of a request that already succeeded.
+     * @return array{subscription: string, subscription_id?: string, sponsorship?: array{status: string, ...}, ...}
      */
-    public function finalizeSubscription(string $setupToken, string $payer, string $signature): array
-    {
-        [$httpStatus, $body] = $this->post('/v1/subscriptions/finalize', [
+    public function finalizeSubscription(
+        string $setupToken,
+        string $payer,
+        string $signature,
+        ?array $sponsorship = null
+    ): array {
+        $payload = [
             'setup_token' => $setupToken,
             'payer' => $payer,
             'signature' => $signature,
-        ]);
+        ];
+        if ($sponsorship !== null) {
+            $payload['sponsorship'] = $sponsorship;
+        }
+
+        [$httpStatus, $body] = $this->post('/v1/subscriptions/finalize', $payload);
         $this->throwIfError($httpStatus, $body);
 
         return $body;
@@ -211,8 +258,16 @@ final class P2FluxClient
      * refused as AMOUNT_OUT_OF_BOUNDS before an intent exists. The server is canonical - this SDK
      * deliberately does not duplicate the check.
      *
-     * @param array{recipient: string, amount: string} $terms
-     * @return array<string, mixed>
+     * `gas_payment_mode` is optional. Omitted - or 'native' - is what has always happened: the buyer
+     * sends the transaction and pays the network in the chain's own currency. With 'payment_token'
+     * the buyer needs none of that currency: P2Flux sends the transaction and the buyer reimburses
+     * the quoted network cost in the payment token. P2Flux's own fees come out of the amount, so
+     * the merchant funds them and the buyer pays no fee on top of the price. Check
+     * `capabilities()` first; not every network and token supports it, and an unsupported request is
+     * refused here rather than after a customer has been sent to a checkout that cannot work.
+     *
+     * @param array{recipient: string, amount: string, gas_payment_mode?: 'native'|'payment_token'} $terms
+     * @return array{intent: string, reference: string, amount: string, ...}
      */
     public function createPayment(array $terms): array
     {
@@ -227,11 +282,71 @@ final class P2FluxClient
      * Refuses an expired intent (INTENT_EXPIRED) - expiry stops a payment being STARTED; it never
      * makes an existing settlement unverifiable.
      *
-     * @return array<string, mixed>
+     * @return array{intent?: string, recipient: string, amount: string, ...}
      */
     public function resolvePayment(string $intent): array
     {
         [$httpStatus, $body] = $this->post('/v1/payments/resolve', ['intent' => $intent]);
+        $this->throwIfError($httpStatus, $body);
+
+        return $body;
+    }
+
+    /**
+     * Settle a payment whose buyer holds no native currency.
+     *
+     * The buyer signed the token authorization the hosted checkout showed them; this hands that
+     * signature to P2Flux, which sends the transaction and takes the quoted network fee out of the
+     * same authorization. Nothing is fronted on credit: the fee and the payment settle together, or
+     * neither does.
+     *
+     * `status => 'CONFIRMING'` means it is in flight. Ask `verifyPayment()` about the hash - do NOT
+     * call this again, because the buyer's authorization may already be spent.
+     *
+     * @return array{status: string, tx_hash?: string, ...}
+     */
+    public function sponsorPayment(string $intent, string $quote, string $payer, string $signature): array
+    {
+        [$httpStatus, $body] = $this->post('/v1/payments/sponsor', [
+            'intent' => $intent,
+            'quote' => $quote,
+            'payer' => $payer,
+            'signature' => $signature,
+        ]);
+        $this->throwIfError($httpStatus, $body);
+
+        return $body;
+    }
+
+    /**
+     * What this deployment supports, per token and per operation.
+     *
+     * Read it once at start-up rather than per checkout - it changes only when the deployment does -
+     * and use it to decide whether to offer a buyer the option of paying the network fee in the
+     * payment currency. Architectural possibility is not support: an operation reported false here
+     * has not been deployed and tested on this network, whatever the token is capable of.
+     *
+     * @return array{
+     *     chain_id: int,
+     *     network: string,
+     *     native_currency: string,
+     *     supported: bool,
+     *     tokens: list<array{
+     *         address: string,
+     *         symbol: string,
+     *         decimals: int,
+     *         gas_payment_modes: list<string>,
+     *         fixed_network_fee_units?: string,
+     *         operations?: array<string, bool>,
+     *         sponsor_contracts?: array<string, string>,
+     *         ...
+     *     }>,
+     *     ...
+     * }
+     */
+    public function capabilities(): array
+    {
+        [$httpStatus, $body] = $this->get('/v1/capabilities');
         $this->throwIfError($httpStatus, $body);
 
         return $body;
@@ -249,7 +364,28 @@ final class P2FluxClient
      * verification, so it is always safe to pass whatever the browser handed you - the server,
      * not the receipt, remains the authority.
      *
-     * @return array<string, mixed>
+     * @return array{
+     *     valid: bool,
+     *     code?: string,
+     *     tx_hash?: string,
+     *     block_number?: int,
+     *     reference?: string,
+     *     amount?: string,
+     *     settlement_receipt?: string,
+     *     gas_payment_mode?: 'native'|'payment_token',
+     *     accounting?: array{
+     *         payment_units: string,
+     *         payment_fee_units: string,
+     *         network_fee_units: string,
+     *         fixed_network_fee_units: string,
+     *         merchant_net_units: string,
+     *         buyer_total_units: string,
+     *         payer: string,
+     *         ...
+     *     },
+     *     retry_after?: int,
+     *     ...
+     * }
      */
     public function verifyPayment(string $intent, string $txHash, ?string $settlementReceipt = null): array
     {
@@ -284,7 +420,18 @@ final class P2FluxClient
      * A settlement that is still confirming comes back with `found => true` and the transaction
      * hash, so you keep the hash rather than having to recover it again.
      *
-     * @return array<string, mixed>
+     * @return array{
+     *     found: bool,
+     *     valid?: bool,
+     *     code?: string,
+     *     tx_hash?: string,
+     *     block_number?: int,
+     *     amount?: string,
+     *     as_of_block?: int,
+     *     gas_payment_mode?: 'native'|'payment_token',
+     *     accounting?: array<string, string>,
+     *     ...
+     * }
      */
     public function recoverPayment(string $intent): array
     {
@@ -323,7 +470,22 @@ final class P2FluxClient
      * into a hit - and omitting it is always safe.
      *
      * @param array{attempted_at?: int, block?: int}|null $hint
-     * @return array<string, mixed>
+     * @return array{
+     *     found: bool,
+     *     code?: string,
+     *     tx_hash?: string,
+     *     block_number?: int,
+     *     subscription_id?: string,
+     *     period_index?: int,
+     *     payer?: string,
+     *     recipient?: string,
+     *     amount_units?: string,
+     *     net_units?: string,
+     *     fee_units?: string,
+     *     network_fee_units?: string,
+     *     as_of_block?: int,
+     *     ...
+     * }
      */
     public function recoverCharge(string $subscriptionRef, int $periodIndex, ?array $hint = null): array
     {
@@ -357,7 +519,7 @@ final class P2FluxClient
      * <checkout>/#/approve/<approve_token> and wait for `p2flux.allowance.restored`, then charge()
      * the SAME subscription again.
      *
-     * @return array<string, mixed>
+     * @return array{approve_token: string, ...}
      */
     public function createAllowanceRestoreSession(string $subscriptionRef): array
     {
@@ -375,9 +537,55 @@ final class P2FluxClient
      *
      * @return array<string, mixed>
      */
-    public function resolveAllowanceRestore(string $approveToken): array
+    public function resolveAllowanceRestore(string $approveToken, ?string $gasPaymentMode = null): array
     {
-        [$httpStatus, $body] = $this->post('/v1/allowances/restore/resolve', ['approve_token' => $approveToken]);
+        $payload = ['approve_token' => $approveToken];
+        /* With 'payment_token' the response also carries a price and the two messages the customer
+         * signs, and P2Flux sends the transaction for them. Without it nothing changes: the terms
+         * describe the customer's own `approve()`, which their wallet sends and pays gas for. */
+        if ($gasPaymentMode !== null && $gasPaymentMode !== '') {
+            $payload['gas_payment_mode'] = $gasPaymentMode;
+        }
+        [$httpStatus, $body] = $this->post('/v1/allowances/restore/resolve', $payload);
+        $this->throwIfError($httpStatus, $body);
+
+        return $body;
+    }
+
+    /**
+     * Carry a customer's signed allowance change onto the chain, so they need no native currency.
+     *
+     * They signed two things: the allowance change, and a bounded fee for the transaction that
+     * carries it. P2Flux sends one call that does both - a change that cannot execute returns the
+     * fee, so the customer is never charged for something that did not happen.
+     *
+     * `$allowanceUnits` of "0" REMOVES the allowance, which stops collection. That is not a
+     * revocation of the recurring authorization - only the payer's own transaction does that - and
+     * the two must be described separately to customers.
+     *
+     * @return array<string, mixed>
+     */
+    public function submitAllowanceRestore(
+        string $approveToken,
+        string $quote,
+        string $permitSignature,
+        string $networkFeeSignature,
+        ?string $allowanceUnits = null,
+        ?string $permitNonce = null
+    ): array {
+        $payload = [
+            'approve_token' => $approveToken,
+            'quote' => $quote,
+            'permit_signature' => $permitSignature,
+            'network_fee_signature' => $networkFeeSignature,
+        ];
+        if ($allowanceUnits !== null) {
+            $payload['allowance_units'] = $allowanceUnits;
+        }
+        if ($permitNonce !== null) {
+            $payload['permit_nonce'] = $permitNonce;
+        }
+        [$httpStatus, $body] = $this->post('/v1/allowances/restore/submit', $payload);
         $this->throwIfError($httpStatus, $body);
 
         return $body;
@@ -391,7 +599,7 @@ final class P2FluxClient
      * The contract still requires the payer's own wallet to send the transaction, so possession of
      * the token alone cannot revoke anything.
      *
-     * @return array<string, mixed>
+     * @return array{cancel_token: string, ...}
      */
     public function createCancellationSession(string $subscriptionRef): array
     {
@@ -427,7 +635,15 @@ final class P2FluxClient
     /**
      * Current state, read straight from the chain. Use it to reconcile after downtime.
      *
-     * @return array<string, mixed>
+     * @return array{
+     *     terms: array{salt: string, amount_units: string, recipient: string, period: int, ...},
+     *     due?: bool,
+     *     charged_this_period?: bool,
+     *     period_index?: int,
+     *     next_period_at?: string,
+     *     revoked?: bool,
+     *     ...
+     * }
      */
     public function status(string $subscriptionRef): array
     {
@@ -463,6 +679,17 @@ final class P2FluxClient
         $this->throwIfError($httpStatus, $body);
 
         return $body;
+    }
+
+    /**
+     * The one read with no body. Sent through the same transport as everything else, so a host that
+     * injects its own HTTP client keeps one place to configure.
+     *
+     * @return array{0: int, 1: array<string, mixed>}
+     */
+    private function get(string $path): array
+    {
+        return $this->post($path, []);
     }
 
     /**
@@ -515,8 +742,8 @@ final class P2FluxClient
      * was already refunded. One refund per payment is YOUR record to enforce - reserve the order row
      * before calling this, not after.
      *
-     * @param array<string, mixed> $original
-     * @return array<string, mixed>
+     * @param array{intent?: string, subscription?: string, tx_hash: string, period_index?: int} $original
+     * @return array{refund_token: string, refund_amount: string, merchant: string, payer: string, ...}
      */
     public function prepareRefund(array $original, string $amountUnits): array
     {
@@ -541,8 +768,8 @@ final class P2FluxClient
      * Still confirming is `REFUND_CONFIRMING`, which is a waiting state: poll the SAME hash. Never
      * send a second refund because the first has not confirmed yet.
      *
-     * @param array<string, mixed> $original
-     * @return array<string, mixed>
+     * @param array{intent?: string, subscription?: string, tx_hash: string, period_index?: int} $original
+     * @return array{status?: string, refund_tx_hash?: string, code?: string, error?: string, ...}
      */
     public function verifyRefund(array $original, string $amountUnits, string $refundTxHash): array
     {

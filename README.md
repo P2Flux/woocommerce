@@ -101,8 +101,11 @@ Faucets for Base Sepolia: [ETH](https://portal.cdp.coinbase.com/products/faucet)
 ### Vendoring the SDK
 
 ```bash
-dev/vendor-sdk.sh ../p2flux_sdk_php v0.6.1
+dev/vendor-sdk.sh ../p2flux_sdk_php v0.7.3
 ```
+
+Reads the files from the tag itself, never the SDK working tree, so a dirty or ahead-of-tag
+checkout cannot be vendored under the tag's name; `dev/release-check.sh` pins the exact tag and commit.
 
 Copies the client, rewrites its namespace to `P2FluxWC\Vendor\P2Flux` so another plugin's copy of
 the same SDK cannot collide with it, and deliberately omits the curl transport: WordPress.org rejects

@@ -11,7 +11,11 @@
 #   CurlTransport is deliberately not copied. WordPress.org rejects plugins that call curl directly,
 #   and this plugin always passes wp_remote_post, so the file would be dead weight that fails review.
 #
-# Usage: dev/vendor-sdk.sh ../p2flux_sdk_php [tag]
+# Usage: dev/vendor-sdk.sh ../p2flux_sdk_php v0.7.3
+#
+# The files are read from the TAG itself (git show <tag>:src/...), never from the SDK working tree,
+# so a dirty checkout or a commit ahead of the tag cannot be vendored under the tag's name - and the
+# SDK repository is left exactly as it was. A tag is required and must be an exact vX.Y.Z tag.
 set -euo pipefail
 
 src="${1:-../p2flux_sdk_php}"
@@ -19,14 +23,14 @@ tag="${2:-}"
 dest="$(cd "$(dirname "$0")/.." && pwd)/includes/vendor/p2flux"
 
 [ -d "$src/src" ] || { echo "not an SDK checkout: $src" >&2; exit 1; }
-if [ -n "$tag" ]; then git -C "$src" checkout -q "$tag"; fi
-version="$(git -C "$src" describe --tags --always)"
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "give an exact release tag, e.g. v0.7.3 (got '$tag')" >&2; exit 1; }
+commit="$(git -C "$src" rev-parse --verify -q "refs/tags/$tag^{commit}")" || { echo "no tag $tag in $src" >&2; exit 1; }
 
 mkdir -p "$dest"
 for file in P2FluxException.php ChargeResult.php P2FluxClient.php; do
-  sed 's/^namespace P2Flux;$/namespace P2FluxWC\\Vendor\\P2Flux;/' "$src/src/$file" > "$dest/$file"
+  git -C "$src" show "$tag:src/$file" | sed 's/^namespace P2Flux;$/namespace P2FluxWC\\Vendor\\P2Flux;/' > "$dest/$file"
 done
-cp "$src/LICENSE" "$dest/LICENSE"
+git -C "$src" show "$tag:LICENSE" > "$dest/LICENSE"
 
 if grep -rn 'curl_' "$dest"/*.php; then
   echo "vendored SDK still calls curl - WordPress.org will reject this" >&2
@@ -34,9 +38,10 @@ if grep -rn 'curl_' "$dest"/*.php; then
 fi
 
 cat > "$dest/VENDORED.md" <<NOTE
-# Vendored: p2flux/p2flux-php
+# Vendored: p2flux/sdk-php
 
-Source: https://github.com/P2Flux/sdk-php at \`$version\`, copied by \`dev/vendor-sdk.sh\`.
+Source: https://github.com/P2Flux/sdk-php at \`$tag\` (commit \`$commit\`), copied by \`dev/vendor-sdk.sh\`
+from the tag itself, not from a working tree.
 
 Two edits, both mechanical:
 
@@ -48,4 +53,4 @@ Two edits, both mechanical:
 Do not edit these files. Fix the SDK upstream, tag it, and re-run the script.
 NOTE
 
-echo "vendored $version -> $dest"
+echo "vendored $tag ($commit) -> $dest"

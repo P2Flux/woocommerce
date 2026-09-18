@@ -71,7 +71,7 @@ add_action( 'template_redirect', static function () {
 		wp_die( 'admin only' );
 	}
 	try {
-		// The vendored SDK 0.6.1 has no wrapper for this endpoint; call it through the plugin's transport.
+		// Called through the plugin's transport directly, so this helper does not depend on the SDK's wrapper.
 		$transport = P2Flux_WC_Client::transport();
 		list( $code, $prepared ) = $transport( rtrim( P2Flux_WC_Client::api_url( P2Flux_WC_Client::TEST ), '/' ) . '/v1/allowances/revoke/prepare', array(), 20 );
 		if ( 200 !== $code || empty( $prepared['to'] ) || empty( $prepared['data'] ) ) {
