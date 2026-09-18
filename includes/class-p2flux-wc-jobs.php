@@ -360,6 +360,35 @@ class P2Flux_WC_Jobs {
 	}
 
 	/**
+	 * Is anything running the plugin's background jobs?
+	 *
+	 * Recovery of a payment whose browser closed, renewals and the daily sweep all run from Action
+	 * Scheduler, which runs from WP-Cron or a server cron. A job more than two hours past its time
+	 * means nothing is running them. Only that is measured - never DISABLE_WP_CRON, which a store with
+	 * a real server cron sets on purpose.
+	 *
+	 * @return string '' when healthy, 'missing' without Action Scheduler, 'late' with overdue jobs.
+	 */
+	public static function health() {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) || ! function_exists( 'as_schedule_single_action' ) ) {
+			return 'missing';
+		}
+
+		$late = as_get_scheduled_actions(
+			array(
+				'group'        => self::GROUP,
+				'status'       => 'pending',
+				'date'         => time() - 2 * HOUR_IN_SECONDS,
+				'date_compare' => '<=',
+				'per_page'     => 1,
+			),
+			'ids'
+		);
+
+		return empty( $late ) ? '' : 'late';
+	}
+
+	/**
 	 * Schedule the whole recovery ladder for a one-time order.
 	 *
 	 * @param int $order_id Order.

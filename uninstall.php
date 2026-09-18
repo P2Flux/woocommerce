@@ -21,6 +21,17 @@ global $wpdb;
 
 // Cached exchange rates: derived data, worth nothing once the plugin is gone.
 $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_p2flux_wc_rate_%' OR option_name LIKE '_transient_timeout_p2flux_wc_rate_%'" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- uninstall: the plugin removes its own rows and tables.
+// 1.1.0: whether sponsored payments are supported, per environment.
+delete_transient( 'p2flux_wc_caps_test' );
+delete_transient( 'p2flux_wc_caps_mainnet' );
+// 1.1.0: the per-order spacing between mode switches. Only an unpaid order's pay page sets it, and it
+// lives ten seconds, so these are the only orders that can still hold one.
+if ( function_exists( 'wc_get_orders' ) ) {
+	foreach ( wc_get_orders( array( 'payment_method' => 'p2flux', 'status' => array( 'pending', 'failed' ), 'limit' => -1, 'return' => 'ids' ) ) as $p2flux_wc_order_id ) {
+		delete_transient( 'p2flux_wc_mode_' . (int) $p2flux_wc_order_id );
+	}
+}
+
 // Any lock left behind by a process that died mid-charge.
 $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE 'p2flux_wc_lock_%'" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- uninstall: the plugin removes its own rows and tables.
 

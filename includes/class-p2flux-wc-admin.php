@@ -230,6 +230,20 @@ class P2Flux_WC_Admin {
 			self::notice( __( 'P2Flux is enabled but has no valid payout wallet, so it is not being offered at checkout.', 'p2flux-for-woocommerce' ) );
 		}
 
+		$health = self::store_screen() ? P2Flux_WC_Jobs::health() : '';
+		if ( '' !== $health ) {
+			printf(
+				'<div class="notice notice-warning"><p>%s <a href="%s" target="_blank" rel="noopener noreferrer">%s</a></p></div>',
+				esc_html(
+					'missing' === $health
+						? __( 'P2Flux cannot schedule background jobs: Action Scheduler is not available. Payments whose browser was closed are not recovered automatically, and renewals are not collected.', 'p2flux-for-woocommerce' )
+						: __( 'P2Flux background jobs are running late: at least one is more than two hours overdue. Payment recovery and renewals depend on WP-Cron or a server cron running regularly.', 'p2flux-for-woocommerce' )
+				),
+				esc_url( 'https://p2flux.com/docs/woocommerce#recovery' ),
+				esc_html__( 'How to fix this', 'p2flux-for-woocommerce' )
+			);
+		}
+
 		if ( P2Flux_WC_Client::TEST === P2Flux_WC_Client::current_environment() && self::store_screen() ) {
 			self::notice( __( 'P2Flux is in test mode: payments settle on Base Sepolia and move no real money.', 'p2flux-for-woocommerce' ), 'info' );
 		}
