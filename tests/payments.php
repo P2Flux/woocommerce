@@ -25,6 +25,8 @@ require __DIR__ . '/../includes/class-p2flux-wc-subscriptions.php';
 require __DIR__ . '/../includes/class-p2flux-wc-charger.php';
 require __DIR__ . '/../includes/class-p2flux-wc-jobs.php';
 require __DIR__ . '/../includes/class-p2flux-wc-intents.php';
+require __DIR__ . '/../includes/class-p2flux-wc-sponsorship.php';
+require __DIR__ . '/../includes/class-p2flux-wc-checkout-page.php';
 require __DIR__ . '/../includes/class-p2flux-wc-payments.php';
 require __DIR__ . '/../includes/class-p2flux-wc-ajax.php';
 
@@ -320,6 +322,310 @@ P2Flux_WC_Payments::ensure_intent( $order, context() );
 p2flux_test_respond( '/v1/payments/recover', array( 'found' => false, 'code' => 'PAYMENT_NOT_FOUND' ) );
 P2Flux_WC_Jobs::recover_order( 509 );
 check( 'nothing found leaves the order unpaid', ! $order->is_paid() );
+
+
+// --- sponsored checkout: paying the network fee in USDC -----------------------------------------
+
+use P2FluxWC\Vendor\P2Flux\P2FluxException;
+
+function wp_create_nonce( $action ) {
+	return 'nonce-' . $action;
+}
+class WC_AJAX {
+	public static function get_endpoint( $endpoint ) {
+		return '/?wc-ajax=' . $endpoint;
+	}
+}
+
+/** What the pay page would hand the browser, without rendering it. */
+function pay_config( $order ) {
+	$gateway = new class() {
+		public function rate() {
+			return '1';
+		}
+		public function get_option( $key ) {
+			return 'recipient' === $key ? MERCHANT : '';
+		}
+	};
+	$method = new ReflectionMethod( 'P2Flux_WC_Checkout_Page', 'payment_config' );
+	$method->setAccessible( true );
+	return $method->invoke( null, $order, $gateway );
+}
+
+function sponsorship( $on ) {
+	update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'test', 'sponsored' => $on ? 'yes' : 'no' ) );
+	$GLOBALS['p2flux_test_transients'] = array();
+}
+
+function caps( array $token = array(), array $top = array() ) {
+	p2flux_test_respond(
+		'/v1/capabilities',
+		array_merge(
+			array(
+				'chain_id'  => 84532,
+				'supported' => true,
+				'tokens'    => array(
+					array_merge(
+						array(
+							'symbol'                  => 'USDC',
+							'gas_payment_modes'       => array( 'native', 'payment_token' ),
+							'fixed_network_fee_units' => '100000',
+							'operations'              => array( 'one_time_payment' => true ),
+							'some_future_key'         => array( 'ignored' => true ),
+						),
+						$token
+					),
+				),
+			),
+			$top
+		)
+	);
+}
+
+function with_units( $units ) {
+	return array_merge( context(), array( 'units' => $units ) );
+}
+
+function cached_caps() {
+	return isset( $GLOBALS['p2flux_test_transients']['p2flux_wc_caps_test'] ) ? $GLOBALS['p2flux_test_transients']['p2flux_wc_caps_test'] : null;
+}
+
+function last_create() {
+	$calls = p2flux_test_calls( '/v1/payments' );
+	return end( $calls )['payload'];
+}
+
+echo "\nsponsorship available: the intent is minted with the network fee in USDC\n";
+sponsorship( true );
+caps();
+respond_create();
+p2flux_test_reset_calls();
+$order  = new_order( 601 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+check( 'the intent is sponsored', 'sponsored' === $intent['mode'] );
+check( 'the create request asks for payment_token', 'payment_token' === ( last_create()['gas_payment_mode'] ?? null ) );
+check( 'capabilities were asked once', 1 === count( p2flux_test_calls( '/v1/capabilities' ) ) );
+check( 'the answer is cached for an hour', HOUR_IN_SECONDS === cached_caps()['ttl'] );
+
+echo "\nthe capabilities answer is cached\n";
+p2flux_test_reset_calls();
+$intent = P2Flux_WC_Payments::ensure_intent( new_order( 602 ), context() );
+check( 'a second order is sponsored too', 'sponsored' === $intent['mode'] );
+check( 'without asking capabilities again', 0 === count( p2flux_test_calls( '/v1/capabilities' ) ) );
+
+echo "\nsponsorship unavailable: every doubtful answer means native\n";
+$variants = array(
+	'supported is false'         => static function () { caps( array(), array( 'supported' => false ) ); },
+	'one_time_payment is false'  => static function () { caps( array( 'operations' => array( 'one_time_payment' => false ) ) ); },
+	'no tokens'                  => static function () { caps( array(), array( 'tokens' => array() ) ); },
+	'no payment_token mode'      => static function () { caps( array( 'gas_payment_modes' => array( 'native' ) ) ); },
+	'a fixed fee that is not a number' => static function () { caps( array( 'fixed_network_fee_units' => 100000 ) ); },
+	'HTTP 500'                   => static function () { p2flux_test_respond( '/v1/capabilities', array( 'error' => 'INTERNAL_ERROR' ), 500 ); },
+	'the API is unreachable'     => static function () {
+		p2flux_test_respond( '/v1/capabilities', static function () { throw new P2FluxException( 'NETWORK_ERROR', 'RETRY_LATER' ); } );
+	},
+);
+$id = 610;
+foreach ( $variants as $label => $arrange ) {
+	sponsorship( true );
+	$arrange();
+	respond_create();
+	p2flux_test_reset_calls();
+	$intent = P2Flux_WC_Payments::ensure_intent( new_order( ++$id ), context() );
+	check( "{$label}: native intent, no mode sent, failure cached for 5 minutes",
+		'native' === $intent['mode'] && ! array_key_exists( 'gas_payment_mode', last_create() ) && array() === cached_caps()['value'] && 300 === cached_caps()['ttl'] );
+}
+
+echo "\nsponsorship switched off: exactly the 1.0.0 request\n";
+sponsorship( false );
+caps();
+respond_create();
+p2flux_test_reset_calls();
+$intent = P2Flux_WC_Payments::ensure_intent( new_order( 620 ), context() );
+check( 'no capabilities call', 0 === count( p2flux_test_calls( '/v1/capabilities' ) ) );
+check( 'the create payload is recipient and amount only', array( 'recipient', 'amount' ) === array_keys( last_create() ) && 'native' === $intent['mode'] );
+update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'test' ) );
+check( 'a settings array without the key (an upgraded 1.0.0 install) is off', ! P2Flux_WC_Sponsorship::enabled() );
+
+echo "\nthe sponsored floor is checked locally\n";
+sponsorship( true );
+caps();
+respond_create();
+check( '101010 cannot carry the fees', ! P2Flux_WC_Sponsorship::covers( 101010, 100000 ) );
+check( '101011 can', P2Flux_WC_Sponsorship::covers( 101011, 100000 ) );
+check( '101010 units mints native', 'native' === P2Flux_WC_Payments::ensure_intent( new_order( 621 ), with_units( 101010 ) )['mode'] );
+check( '101011 units mints sponsored', 'sponsored' === P2Flux_WC_Payments::ensure_intent( new_order( 622 ), with_units( 101011 ) )['mode'] );
+
+echo "\na refused sponsored create falls back to native, once\n";
+foreach ( array( 'PAYMENT_TOKEN_GAS_UNAVAILABLE' => 503, 'PAYMENT_TOKEN_GAS_UNSUPPORTED' => 400, 'AMOUNT_OUT_OF_BOUNDS' => 400 ) as $refusal => $http ) {
+	sponsorship( true );
+	caps();
+	p2flux_test_respond(
+		'/v1/payments',
+		static function ( $payload ) use ( $refusal, $http ) {
+			if ( isset( $payload['gas_payment_mode'] ) ) {
+				return array( $http, array( 'error' => $refusal ) );
+			}
+			return array( 200, array( 'intent' => 'p2f1.k1.native-' . ( ++$GLOBALS['minted'] ) . '.mac', 'expires_at' => time() + 3600 ) );
+		}
+	);
+	p2flux_test_reset_calls();
+	$order  = new_order( 630 + $http + strlen( $refusal ) );
+	$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+	$ledger = P2Flux_WC_Intents::all( $order );
+	check( "{$refusal}: two creates, the second native",
+		2 === count( p2flux_test_calls( '/v1/payments' ) ) && ! array_key_exists( 'gas_payment_mode', last_create() ) );
+	check( "{$refusal}: one native ledger record", is_array( $intent ) && 1 === count( $ledger ) && 'native' === $ledger[0]['mode'] );
+	check( "{$refusal}: sponsorship cached as unavailable for 5 minutes", array() === cached_caps()['value'] && 300 === cached_caps()['ttl'] );
+}
+
+echo "\na timeout or a rate limit is never retried\n";
+foreach ( array(
+	'NETWORK_ERROR' => static function () { throw new P2FluxException( 'NETWORK_ERROR', 'RETRY_LATER' ); },
+	'RATE_LIMITED'  => static function () { return array( 429, array( 'error' => 'RATE_LIMITED' ) ); },
+) as $label => $answer ) {
+	sponsorship( true );
+	caps();
+	p2flux_test_respond( '/v1/payments', $answer );
+	p2flux_test_reset_calls();
+	$order  = new_order( 640 + strlen( $label ) );
+	$result = P2Flux_WC_Payments::ensure_intent( $order, context() );
+	check( "{$label}: one create request only", 1 === count( p2flux_test_calls( '/v1/payments' ) ) );
+	check( "{$label}: an error, no intent, capabilities still trusted", is_wp_error( $result ) && 0 === count( P2Flux_WC_Intents::all( $order ) ) && isset( cached_caps()['value']['fixed'] ) );
+}
+
+echo "\nthe pay page carries the active intent, and a switch survives a reload\n";
+sponsorship( true );
+caps();
+respond_create();
+p2flux_test_reset_calls();
+$order  = new_order( 650 );
+$config = pay_config( $order );
+$first  = P2Flux_WC_Intents::active( $order );
+check( 'config token is the active intent', $first['intent'] === $config['token'] && 'pay' === $config['mode'] );
+check( 'config says sponsored and offers ETH', 'sponsored' === $config['gas'] && 'native' === $config['switchTo'] );
+check( 'the hosted checkout is the test one', 'https://pay-test.p2flux.com' === $config['checkout'] && '/?wc-ajax=p2flux_mode' === $config['ajax']['mode'] );
+
+p2flux_test_respond( '/v1/payments/recover', array( 'found' => false, 'code' => 'PAYMENT_NOT_FOUND' ) );
+$sent = ajax( 'mode', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 650, 'order_key' => 'wc_order_key_650', 'mode' => 'native' ) );
+check( 'switching to ETH inside the mint cooldown is allowed', true === $sent['success'] && 'switched' === $sent['data']['status'] && 'native' === $sent['data']['mode'] );
+check( 'it asked whether the first intent was paid before minting', 1 === count( p2flux_test_calls( '/v1/payments/recover' ) ) );
+check( 'the native create sent no mode', ! array_key_exists( 'gas_payment_mode', last_create() ) && 2 === count( p2flux_test_calls( '/v1/payments' ) ) );
+
+$again = ajax( 'mode', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 650, 'order_key' => 'wc_order_key_650', 'mode' => 'sponsored' ) );
+check( 'a second switch within 10 seconds is refused', false === $again['success'] && 'COOLDOWN' === $again['data']['code'] );
+
+$config = pay_config( $order );
+check( 'a reload keeps native and mints nothing', 'native' === $config['gas'] && $sent['data']['token'] === $config['token'] && 2 === count( p2flux_test_calls( '/v1/payments' ) ) );
+check( 'and offers the way back', 'sponsored' === $config['switchTo'] );
+
+unset( $GLOBALS['p2flux_test_transients']['p2flux_wc_mode_650'] );
+$back = ajax( 'mode', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 650, 'order_key' => 'wc_order_key_650', 'mode' => 'sponsored' ) );
+check( 'switching back reuses the first intent', true === $back['success'] && $first['intent'] === $back['data']['token'] && 'sponsored' === $back['data']['mode'] );
+check( 'still two creates and two ledger rows', 2 === count( p2flux_test_calls( '/v1/payments' ) ) && 2 === count( P2Flux_WC_Intents::all( $order ) ) );
+check( 'and the first intent is active again', $first['intent'] === P2Flux_WC_Intents::active( $order )['intent'] );
+
+$bad = ajax( 'mode', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 650, 'order_key' => 'wc_order_key_650', 'mode' => 'free' ) );
+check( 'an unknown mode is refused', false === $bad['success'] && 'INVALID_MODE' === $bad['data']['code'] );
+$bad = ajax( 'mode', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 650, 'order_key' => 'wrong', 'mode' => 'native' ) );
+check( 'a wrong order key is refused', false === $bad['success'] && 'FORBIDDEN' === $bad['data']['code'] );
+
+echo "\na switch is refused where it makes no sense, and never mints over a payment\n";
+p2flux_test_reset_calls();
+$order = new_order( 651 );
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+$order->paid = true;
+check( 'a paid order answers paid', 'paid' === P2Flux_WC_Payments::switch_mode( $order, 'native' )['status'] );
+
+$order = new_order( 652 );
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+$order->payment_method = 'bacs';
+check( 'an order paid another way is refused', is_wp_error( P2Flux_WC_Payments::switch_mode( $order, 'native' ) ) );
+
+$order        = new_order( 653 );
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+$subscription = new P2Flux_Test_Subscription( 9653 );
+$subscription->related = array( 653 );
+p2flux_test_register_subscription( $subscription );
+check( 'a subscription parent is refused', is_wp_error( P2Flux_WC_Payments::switch_mode( $order, 'native' ) ) );
+$GLOBALS['p2flux_test_subscriptions'] = array();
+
+$order = new_order( 654 );
+$held  = P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/payments/recover', array_merge( array( 'found' => true, 'gas_payment_mode' => 'payment_token' ), verdict( 30 ) ) );
+$result = P2Flux_WC_Payments::switch_mode( $order, 'native' );
+check( 'a payment found by the pre-check answers paid', 'paid' === $result['status'] && $order->is_paid() && tx( 30 ) === $order->completed_with );
+check( 'and mints nothing', 0 === count( p2flux_test_calls( '/v1/payments' ) ) && 1 === count( P2Flux_WC_Intents::all( $order ) ) );
+
+$order = new_order( 655 );
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/payments/recover', array( 'found' => true, 'valid' => false, 'code' => 'PAYMENT_CONFIRMING', 'tx_hash' => tx( 31 ) ) );
+check( 'a payment still confirming answers confirming and mints nothing', 'confirming' === P2Flux_WC_Payments::switch_mode( $order, 'native' )['status'] && 0 === count( p2flux_test_calls( '/v1/payments' ) ) );
+
+echo "\nsponsorship turned off while an order holds a sponsored intent\n";
+$order = new_order( 656 );
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+sponsorship( false );
+respond_create();
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+check( 'the next load downgrades it to native', 'native' === $intent['mode'] && 2 === count( P2Flux_WC_Intents::all( $order ) ) );
+sponsorship( true );
+caps();
+
+echo "\na verified sponsored payment\n";
+respond_create();
+$order  = new_order( 660 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+$payer  = '0x4e21000000000000000000000000000000000be2';
+p2flux_test_respond(
+	'/v1/payments/verify',
+	array_merge(
+		verdict( 40 ),
+		array(
+			'gas_payment_mode' => 'payment_token',
+			'accounting'       => array(
+				'payment_units'           => '12990000',
+				'payment_fee_units'       => '129900',
+				'network_fee_units'       => '4702',
+				'fixed_network_fee_units' => '100000',
+				'merchant_net_units'      => '12760100',
+				'buyer_total_units'       => '12994702',
+				'payer'                   => $payer,
+			),
+		)
+	)
+);
+$result = P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 40 ) );
+check( 'pays the order', 'paid' === $result['status'] && $order->is_paid() );
+check( 'stores the gas mode', 'sponsored' === $order->get_meta( '_p2flux_gas_mode' ) );
+check( 'notes what the merchant received and the network fee', 1 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, '12.7601 USDC' ) && false !== strpos( $n, '0.004702 USDC' ); } ) ) );
+check( 'never stores the payer', false === strpos( serialize( array( $order->notes, $order ) ), $payer ) );
+
+echo "\na settlement that does not match is never paid\n";
+$order  = new_order( 661 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 41, '12.994702' ), array( 'gas_payment_mode' => 'payment_token' ) ) );
+P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 41 ) );
+check( 'the buyer total is not the price: not paid, flagged', ! $order->is_paid() && '' !== (string) $order->get_meta( '_p2flux_unexpected_payment' ) );
+
+$order  = new_order( 662 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+$order->update_meta_data( '_p2flux_units', PRICE + 1000000 ); // the order total changed after the intent
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 42 ), array( 'gas_payment_mode' => 'payment_token' ) ) );
+P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 42 ) );
+check( 'an order whose total changed: not paid, flagged', ! $order->is_paid() && '' !== (string) $order->get_meta( '_p2flux_unexpected_payment' ) );
+
+echo "\na sponsored payment is recovered after the browser closed\n";
+$order  = new_order( 663 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/payments/recover', array_merge( array( 'found' => true, 'gas_payment_mode' => 'payment_token' ), verdict( 43 ) ) );
+P2Flux_WC_Jobs::recover_order( 663 );
+check( 'recovery pays it without any verify call', $order->is_paid() && 0 === count( p2flux_test_calls( '/v1/payments/verify' ) ) );
+check( 'with the gas mode stored', 'sponsored' === $order->get_meta( '_p2flux_gas_mode' ) );
+check( 'and the recovery ladder dropped', 0 === count( scheduled( 663, P2Flux_WC_Jobs::RECOVER ) ) );
 
 echo "\n";
 echo 0 === $failures

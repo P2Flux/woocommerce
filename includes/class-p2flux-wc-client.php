@@ -90,15 +90,16 @@ class P2Flux_WC_Client {
 	 * A client for one environment.
 	 *
 	 * @param string $environment TEST | LIVE.
+	 * @param int    $timeout     Seconds one call may take. Only the capabilities lookup shortens it.
 	 * @return P2FluxClient
 	 */
-	public static function for_environment( $environment ) {
+	public static function for_environment( $environment, $timeout = self::TIMEOUT ) {
 		$environment = self::LIVE === $environment ? self::LIVE : self::TEST;
 
 		return new P2FluxClient(
 			array(
 				'apiUrl'    => self::api_url( $environment ),
-				'timeout'   => self::TIMEOUT,
+				'timeout'   => (int) $timeout,
 				'transport' => self::transport(),
 			)
 		);

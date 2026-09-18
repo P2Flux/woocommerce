@@ -125,18 +125,29 @@ class P2Flux_WC_Checkout_Page {
 				?>
 			</p>
 
+			<?php if ( 'pay' === $config['mode'] ) : ?>
+				<p class="p2flux-pay__meta" id="p2flux-gas-note"<?php echo P2Flux_WC_Sponsorship::SPONSORED === $config['gas'] ? '' : ' hidden'; ?>>
+					<?php esc_html_e( 'The network fee is paid in USDC; the exact amount is shown before you confirm.', 'p2flux-for-woocommerce' ); ?>
+				</p>
+			<?php endif; ?>
+
 			<div class="p2flux-pay__actions">
 				<?php /* Disabled until the script binds it: a button that swallows the first click is
 					worse than one that is visibly not ready yet. */ ?>
 				<button type="button" class="button alt p2flux-pay__primary" id="p2flux-pay" disabled aria-disabled="true">
 					<?php
-					echo esc_html(
-						'subscribe' === $config['mode']
-							? __( 'Authorize with your wallet', 'p2flux-for-woocommerce' )
-							: __( 'Pay with your wallet', 'p2flux-for-woocommerce' )
-					);
+					if ( 'subscribe' === $config['mode'] ) {
+						esc_html_e( 'Authorize with your wallet', 'p2flux-for-woocommerce' );
+					} elseif ( 'pay' === $config['mode'] && P2Flux_WC_Sponsorship::SPONSORED === $config['gas'] ) {
+						esc_html_e( 'Pay with USDC — no ETH required', 'p2flux-for-woocommerce' );
+					} else {
+						esc_html_e( 'Pay with your wallet', 'p2flux-for-woocommerce' );
+					}
 					?>
 				</button>
+
+				<?php /* Filled in and shown by the script, which is the only thing that can act on it. */ ?>
+				<button type="button" class="p2flux-pay__link" id="p2flux-mode" hidden></button>
 
 				<?php /* Shown only once a payment may already exist. Never a second way to pay. */ ?>
 				<button type="button" class="p2flux-pay__secondary" id="p2flux-check" hidden>
@@ -192,9 +203,29 @@ class P2Flux_WC_Checkout_Page {
 			return $intent;
 		}
 
+		/*
+		 * The other way of paying the network fee. Paying in ETH is always offered next to a USDC
+		 * intent - it is the way out when the fee service cannot take this payment right now. The way
+		 * back is offered only to a customer who switched away from it.
+		 */
+		$gas       = P2Flux_WC_Intents::mode( $intent );
+		$switch_to = '';
+		if ( P2Flux_WC_Sponsorship::SPONSORED === $gas ) {
+			$switch_to = P2Flux_WC_Sponsorship::NATIVE;
+		} else {
+			foreach ( P2Flux_WC_Intents::all( $order ) as $item ) {
+				if ( P2Flux_WC_Sponsorship::SPONSORED === P2Flux_WC_Intents::mode( $item ) ) {
+					$switch_to = P2Flux_WC_Sponsorship::allowed( $intent['environment'], $intent['units'] ) ? P2Flux_WC_Sponsorship::SPONSORED : '';
+					break;
+				}
+			}
+		}
+
 		return self::base_config( $order ) + array(
-			'mode'  => 'pay',
-			'token' => $intent['intent'],
+			'mode'     => 'pay',
+			'token'    => $intent['intent'],
+			'gas'      => $gas,
+			'switchTo' => $switch_to,
 		);
 	}
 
@@ -247,6 +278,7 @@ class P2Flux_WC_Checkout_Page {
 				'verify'   => WC_AJAX::get_endpoint( 'p2flux_verify' ),
 				'check'    => WC_AJAX::get_endpoint( 'p2flux_check' ),
 				'activate' => WC_AJAX::get_endpoint( 'p2flux_activate' ),
+				'mode'     => WC_AJAX::get_endpoint( 'p2flux_mode' ),
 			),
 			'redirect' => $order->get_checkout_order_received_url(),
 			'i18n'     => array(
@@ -262,6 +294,11 @@ class P2Flux_WC_Checkout_Page {
 				'notFound'   => __( 'No payment has arrived yet. If you have just confirmed one, wait a moment and check again.', 'p2flux-for-woocommerce' ),
 				'failed'     => __( 'That payment could not be completed. Nothing was taken from your wallet.', 'p2flux-for-woocommerce' ),
 				'retry'      => __( 'We could not reach the payment service just now. Your payment, if you made one, is safe — check again in a moment.', 'p2flux-for-woocommerce' ),
+				'payUsdc'    => __( 'Pay with USDC — no ETH required', 'p2flux-for-woocommerce' ),
+				'payWallet'  => __( 'Pay with your wallet', 'p2flux-for-woocommerce' ),
+				'toNative'   => __( 'I have ETH on Base — pay the network fee in ETH', 'p2flux-for-woocommerce' ),
+				'toUsdc'     => __( 'Pay the network fee in USDC instead — no ETH required', 'p2flux-for-woocommerce' ),
+				'switching'  => __( 'Preparing your payment…', 'p2flux-for-woocommerce' ),
 			),
 		);
 	}

@@ -60,6 +60,7 @@ function p2flux_wc_load() {
 			'collection',
 			'auth-history',
 			'intents',
+			'sponsorship',
 			'renewal',
 			'charger',
 			'payments',
@@ -109,6 +110,16 @@ add_action(
 		}
 
 		p2flux_wc_load();
+
+		/* An install upgraded from 1.0.0 keeps paying the network fee in ETH until the merchant turns
+		 * sponsorship on: it costs them 0.10 USDC per payment, and that is theirs to choose. Without
+		 * this the settings form would show the box ticked from its default, and the next unrelated
+		 * save would switch it on. A fresh install has no settings yet and gets the default. */
+		$settings = get_option( 'woocommerce_p2flux_settings' );
+		if ( is_array( $settings ) && ! isset( $settings['sponsored'] ) ) {
+			$settings['sponsored'] = 'no';
+			update_option( 'woocommerce_p2flux_settings', $settings );
+		}
 
 		P2Flux_WC_Periods::install();
 		/* The block checkout asks the cart whether this subscription can be paid, so the answer has to

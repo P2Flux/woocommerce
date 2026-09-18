@@ -137,10 +137,14 @@ class P2Flux_WC_Intents {
 	 * merchant - it never drops an older record, because that record may be the only thing that can
 	 * explain a late transfer.
 	 *
+	 * The cooldown is per mode: switching how the network fee is paid mints the other kind of intent
+	 * at once, and P2Flux_WC_Payments reuses an unexpired one of each kind rather than minting again.
+	 *
 	 * @param WC_Order $order Order.
+	 * @param string   $mode  Mode about to be minted.
 	 * @return true|string True, or 'cooldown' | 'ceiling'.
 	 */
-	public static function may_mint( $order ) {
+	public static function may_mint( $order, $mode = P2Flux_WC_Sponsorship::NATIVE ) {
 		$items = self::all( $order );
 
 		if ( count( $items ) >= self::MAX_LEDGER ) {
@@ -148,7 +152,7 @@ class P2Flux_WC_Intents {
 		}
 
 		$last = end( $items );
-		if ( $last && ( time() - (int) $last['created'] ) < self::MINT_COOLDOWN && self::ACTIVE === $last['status'] ) {
+		if ( $last && ( time() - (int) $last['created'] ) < self::MINT_COOLDOWN && self::ACTIVE === $last['status'] && self::mode( $last ) === $mode ) {
 			return 'cooldown';
 		}
 
@@ -178,6 +182,38 @@ class P2Flux_WC_Intents {
 			),
 			$intent
 		);
+
+		self::save( $order, $items );
+	}
+
+	/**
+	 * How an intent's network fee is paid. Intents minted by 1.0.0 carry no mode and are native.
+	 *
+	 * @param array<string,mixed> $item Ledger record.
+	 * @return string P2Flux_WC_Sponsorship::NATIVE | SPONSORED.
+	 */
+	public static function mode( array $item ) {
+		return ( isset( $item['mode'] ) && P2Flux_WC_Sponsorship::SPONSORED === $item['mode'] ) ? P2Flux_WC_Sponsorship::SPONSORED : P2Flux_WC_Sponsorship::NATIVE;
+	}
+
+	/**
+	 * Make a replaced intent the active one again, retiring the current one. Used when the customer
+	 * switches back to a way of paying they had already been given an intent for.
+	 *
+	 * @param WC_Order $order  Order.
+	 * @param string   $intent Intent token.
+	 * @return void
+	 */
+	public static function revive( $order, $intent ) {
+		$items = self::all( $order );
+
+		foreach ( $items as $index => $item ) {
+			if ( $item['intent'] === $intent ) {
+				$items[ $index ]['status'] = self::ACTIVE;
+			} elseif ( self::ACTIVE === $item['status'] ) {
+				$items[ $index ]['status'] = self::REPLACED;
+			}
+		}
 
 		self::save( $order, $items );
 	}

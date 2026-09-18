@@ -100,6 +100,13 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 				'placeholder' => '0x…',
 				'description' => __( 'Your own wallet address on Base. Payments arrive here directly. Changing it affects new payments and new subscriptions only: existing subscriptions keep paying the wallet the customer authorized, including when they re-authorize.', 'p2flux-for-woocommerce' ),
 			),
+			'sponsored'   => array(
+				'title'       => __( 'No-ETH checkout', 'p2flux-for-woocommerce' ),
+				'type'        => 'checkbox',
+				'label'       => __( 'Let customers pay the network fee in USDC, so they need no ETH', 'p2flux-for-woocommerce' ),
+				'default'     => 'yes',
+				'description' => __( 'Each payment made this way costs you an additional fixed 0.10 USDC on top of the 1% fee: that network fee comes out of the amount you receive. Customers can still choose to pay the network fee in ETH themselves. Subscriptions are not affected.', 'p2flux-for-woocommerce' ),
+			),
 			'rate_mode'   => array(
 				'title'       => __( 'Exchange rate', 'p2flux-for-woocommerce' ),
 				'type'        => 'select',

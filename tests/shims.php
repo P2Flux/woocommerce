@@ -78,6 +78,47 @@ function delete_option( $name ) {
 }
 
 /**
+ * Transients, in memory. The TTL is kept so a test can read how long an answer is trusted.
+ *
+ * @param string $name Name.
+ * @return mixed
+ */
+function get_transient( $name ) {
+	$stored = isset( $GLOBALS['p2flux_test_transients'][ $name ] ) ? $GLOBALS['p2flux_test_transients'][ $name ] : null;
+	if ( ! $stored || ( $stored['ttl'] && $stored['at'] + $stored['ttl'] < time() ) ) {
+		return false;
+	}
+
+	return $stored['value'];
+}
+
+/**
+ * @param string $name  Name.
+ * @param mixed  $value Value.
+ * @param int    $ttl   Seconds.
+ * @return bool
+ */
+function set_transient( $name, $value, $ttl = 0 ) {
+	$GLOBALS['p2flux_test_transients'][ $name ] = array(
+		'value' => $value,
+		'ttl'   => (int) $ttl,
+		'at'    => time(),
+	);
+
+	return true;
+}
+
+/**
+ * @param string $name Name.
+ * @return bool
+ */
+function delete_transient( $name ) {
+	unset( $GLOBALS['p2flux_test_transients'][ $name ] );
+
+	return true;
+}
+
+/**
  * JSON encode, WordPress-style.
  *
  * @param mixed $data Data.

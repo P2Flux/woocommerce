@@ -20,13 +20,16 @@ defined( 'ABSPATH' ) || exit;
  */
 class P2Flux_WC_Ajax {
 
+	/** Per-order transient that spaces out mode switches. Uninstall deletes it by this name. */
+	const MODE_COOLDOWN = 'p2flux_wc_mode_';
+
 	/**
 	 * Register them.
 	 *
 	 * @return void
 	 */
 	public static function init() {
-		foreach ( array( 'verify', 'check', 'activate' ) as $endpoint ) {
+		foreach ( array( 'verify', 'check', 'activate', 'mode' ) as $endpoint ) {
 			add_action( 'wc_ajax_p2flux_' . $endpoint, array( __CLASS__, $endpoint ) );
 			add_action( 'wc_ajax_nopriv_p2flux_' . $endpoint, array( __CLASS__, $endpoint ) );
 		}
@@ -137,6 +140,52 @@ class P2Flux_WC_Ajax {
 		}
 
 		wp_send_json_success( array( 'status' => 'not_found' ) );
+	}
+
+	/**
+	 * The customer chose the other way of paying the network fee: in ETH, or in USDC.
+	 *
+	 * Spaced out per order, because each switch asks P2Flux whether the current intent was paid and
+	 * may mint a new one - the order key authorizes this call, and it should not be a lever on the
+	 * merchant's API quota.
+	 *
+	 * @return void
+	 */
+	public static function mode() {
+		$order = self::authorized_order();
+		if ( ! $order ) {
+			wp_send_json_error( array( 'code' => 'FORBIDDEN' ), 403 );
+		}
+
+		$mode = isset( $_POST['mode'] ) ? sanitize_text_field( wp_unslash( $_POST['mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_order() before this runs.
+		if ( ! in_array( $mode, array( P2Flux_WC_Sponsorship::NATIVE, P2Flux_WC_Sponsorship::SPONSORED ), true ) ) {
+			wp_send_json_error( array( 'code' => 'INVALID_MODE' ), 400 );
+		}
+
+		$cooldown = self::MODE_COOLDOWN . $order->get_id();
+		if ( get_transient( $cooldown ) ) {
+			wp_send_json_error(
+				array(
+					'code'    => 'COOLDOWN',
+					'message' => __( 'Please wait a few seconds and try again.', 'p2flux-for-woocommerce' ),
+				),
+				429
+			);
+		}
+		set_transient( $cooldown, 1, 10 );
+
+		$result = P2Flux_WC_Payments::switch_mode( $order, $mode );
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error(
+				array(
+					'code'    => $result->get_error_code(),
+					'message' => $result->get_error_message(),
+				),
+				400
+			);
+		}
+
+		wp_send_json_success( $result );
 	}
 
 	/**

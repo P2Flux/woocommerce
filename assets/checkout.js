@@ -23,6 +23,9 @@
 	var popup = null;
 	var settled = false;
 	var openedToken = '';
+	var modeLink = document.getElementById( 'p2flux-mode' );
+	var gasNote = document.getElementById( 'p2flux-gas-note' );
+	var txKnown = false;
 
 	/**
 	 * The status line is the only thing that talks.
@@ -52,6 +55,32 @@
 		if ( check ) {
 			check.hidden = false;
 		}
+	}
+
+	/**
+	 * The button, the fee line and the switch link, for the way of paying the network fee this page
+	 * currently holds. The link goes once a transaction exists: from then on the question is whether
+	 * it arrived, never how to pay again.
+	 */
+	function showMode() {
+		if ( 'pay' !== config.mode ) {
+			return;
+		}
+		if ( button ) {
+			button.textContent = 'sponsored' === config.gas ? config.i18n.payUsdc : config.i18n.payWallet;
+		}
+		if ( gasNote ) {
+			gasNote.hidden = 'sponsored' !== config.gas;
+		}
+		if ( modeLink ) {
+			modeLink.textContent = 'native' === config.switchTo ? config.i18n.toNative : config.i18n.toUsdc;
+			modeLink.hidden = txKnown || ! config.switchTo;
+		}
+	}
+
+	function transactionKnown() {
+		txKnown = true;
+		showMode();
 	}
 
 	function post( url, body ) {
@@ -84,6 +113,7 @@
 	 */
 	function verify( txHash, receipt ) {
 		say( config.i18n.verifying, 'busy' );
+		transactionKnown();
 
 		post( config.ajax.verify, { tx_hash: txHash, settlement_receipt: receipt || '', intent: openedToken || config.token || '' } )
 			.then( function ( response ) {
@@ -264,6 +294,67 @@
 		} );
 	}
 
+	/**
+	 * Switch how the network fee is paid. The server first asks whether the current intent was
+	 * already paid; only if not does it hand back an intent of the other kind.
+	 */
+	if ( modeLink ) {
+		modeLink.addEventListener( 'click', function () {
+			var target = config.switchTo;
+			if ( ! target || txKnown ) {
+				return;
+			}
+			modeLink.disabled = true;
+			if ( popup && ! popup.closed ) {
+				popup.close();
+			}
+			popup = null;
+			say( config.i18n.switching, 'busy' );
+
+			post( config.ajax.mode, { mode: target } )
+				.then( function ( response ) {
+					var result = response && response.data ? response.data : {};
+					modeLink.disabled = false;
+
+					if ( ! response || ! response.success ) {
+						say( result.message || config.i18n.retry, 'warn' );
+						return;
+					}
+					if ( 'paid' === result.status ) {
+						done( result.redirect );
+						return;
+					}
+					if ( 'confirming' === result.status ) {
+						transactionKnown();
+						say( config.i18n.confirming, 'busy' );
+						paymentMayExist();
+						return;
+					}
+
+					config.token = result.token;
+					config.gas = result.mode;
+					// Asked for USDC and was given ETH: the fee service refused it just now, so do not
+					// offer the same switch straight back.
+					config.switchTo = result.mode !== target ? '' : ( 'native' === result.mode ? 'sponsored' : 'native' );
+					showMode();
+					if ( button ) {
+						button.hidden = false;
+						button.disabled = false;
+					}
+					if ( check ) {
+						check.hidden = true;
+					}
+					say( '', '' );
+				} )
+				.catch( function () {
+					modeLink.disabled = false;
+					say( config.i18n.retry, 'warn' );
+				} );
+		} );
+	}
+
+	showMode();
+
 	if ( check ) {
 		check.addEventListener( 'click', function () {
 			check.disabled = true;
@@ -278,6 +369,9 @@
 						return;
 					}
 
+					if ( 'confirming' === result.status ) {
+						transactionKnown();
+					}
 					say(
 						'confirming' === result.status ? config.i18n.confirming : config.i18n.notFound,
 						'confirming' === result.status ? 'busy' : 'warn'

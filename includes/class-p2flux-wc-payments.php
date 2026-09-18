@@ -20,17 +20,33 @@ class P2Flux_WC_Payments {
 	 * Ensure the order has an intent the customer can pay, minting one if needed.
 	 *
 	 * An existing intent is reused whenever it still describes this order: same amount, same
-	 * recipient, same environment, and long enough left to be worth opening. Reuse matters - a fresh
-	 * intent for every page load would leave a trail of live payment instructions for one order.
+	 * recipient, same environment, same way of paying the network fee, and long enough left to be
+	 * worth opening. Reuse matters - a fresh intent for every page load would leave a trail of live
+	 * payment instructions for one order.
+	 *
+	 * The way the network fee is paid is sealed into the intent, so it is decided here. It is sticky:
+	 * an order that already has an intent keeps that intent's mode, so a reload never undoes the
+	 * customer's choice. Only a new order gets the default - USDC when the merchant enabled it, P2Flux
+	 * supports it and the amount can carry the fixed fee - and a sponsored order drops to native once
+	 * sponsorship is no longer allowed.
 	 *
 	 * @param WC_Order $order   Order.
-	 * @param array    $context units, recipient, environment, rate.
+	 * @param array    $context units, recipient, environment, rate; optionally mode, when the
+	 *                          customer chose one (P2Flux_WC_Payments::switch_mode()).
 	 * @return array<string,mixed>|WP_Error
 	 */
 	public static function ensure_intent( $order, array $context ) {
-		$reusable = self::reusable( $order, $context );
-		if ( $reusable ) {
-			return $reusable;
+		if ( ! isset( $context['mode'] ) ) {
+			$active          = P2Flux_WC_Intents::active( $order );
+			$context['mode'] = $active ? P2Flux_WC_Intents::mode( $active ) : P2Flux_WC_Sponsorship::SPONSORED;
+		}
+		if ( P2Flux_WC_Sponsorship::SPONSORED === $context['mode'] && ! P2Flux_WC_Sponsorship::allowed( $context['environment'], $context['units'] ) ) {
+			$context['mode'] = P2Flux_WC_Sponsorship::NATIVE;
+		}
+
+		$active = P2Flux_WC_Intents::active( $order );
+		if ( $active && self::describes( $active, $context ) ) {
+			return $active;
 		}
 
 		/*
@@ -59,35 +75,64 @@ class P2Flux_WC_Payments {
 	}
 
 	/**
-	 * The order's current intent, if it still describes this order and is worth opening.
+	 * The newest intent this order already has that still describes it, made active again if the
+	 * customer had moved away from it. Callers hold the order's intent lock.
+	 *
+	 * Switching the way of paying back and forth therefore costs at most one intent of each kind,
+	 * however often the customer toggles.
 	 *
 	 * @param WC_Order $order   Order.
-	 * @param array    $context units, recipient, environment.
+	 * @param array    $context units, recipient, environment, mode.
 	 * @return array<string,mixed>|null
 	 */
 	private static function reusable( $order, array $context ) {
-		$active = P2Flux_WC_Intents::active( $order );
+		foreach ( array_reverse( P2Flux_WC_Intents::all( $order ) ) as $item ) {
+			if ( ! in_array( $item['status'], array( P2Flux_WC_Intents::ACTIVE, P2Flux_WC_Intents::REPLACED ), true ) || ! self::describes( $item, $context ) ) {
+				continue;
+			}
+			if ( P2Flux_WC_Intents::ACTIVE !== $item['status'] ) {
+				P2Flux_WC_Intents::revive( $order, $item['intent'] );
+				$order->update_meta_data( '_p2flux_expires_at', (int) $item['expires'] );
+				$order->save();
+				$item['status'] = P2Flux_WC_Intents::ACTIVE;
+			}
 
-		if ( $active
-			&& (int) $active['units'] === (int) $context['units']
-			&& strtolower( $active['recipient'] ) === strtolower( $context['recipient'] )
-			&& $active['environment'] === $context['environment']
-			&& (int) $active['expires'] > time() + MINUTE_IN_SECONDS ) {
-			return $active;
+			return $item;
 		}
 
 		return null;
 	}
 
 	/**
+	 * Does this intent still describe the order, and is it worth opening?
+	 *
+	 * @param array<string,mixed> $item    Ledger record.
+	 * @param array               $context units, recipient, environment, mode.
+	 * @return bool
+	 */
+	private static function describes( array $item, array $context ) {
+		return (int) $item['units'] === (int) $context['units']
+			&& strtolower( $item['recipient'] ) === strtolower( $context['recipient'] )
+			&& $item['environment'] === $context['environment']
+			&& P2Flux_WC_Intents::mode( $item ) === $context['mode']
+			&& (int) $item['expires'] > time() + MINUTE_IN_SECONDS;
+	}
+
+	/**
 	 * Create a new intent and record it. Callers hold the order's intent lock.
 	 *
+	 * A sponsored create that P2Flux refuses because it cannot sponsor this payment - the network fee
+	 * service is paused, the amount is under its floor - is retried once as native, and sponsorship
+	 * is treated as unavailable for a few minutes. Nothing else is retried: a second slow call after a
+	 * timeout would outlast the request, and a rate limit is not answered by asking again.
+	 *
 	 * @param WC_Order $order   Order.
-	 * @param array    $context units, recipient, environment, rate.
+	 * @param array    $context units, recipient, environment, rate, mode.
 	 * @return array<string,mixed>|WP_Error
 	 */
 	private static function mint( $order, array $context ) {
-		$may = P2Flux_WC_Intents::may_mint( $order );
+		$mode = $context['mode'];
+		$may  = P2Flux_WC_Intents::may_mint( $order, $mode );
 		if ( true !== $may ) {
 			return new WP_Error(
 				'p2flux_intent_' . $may,
@@ -98,14 +143,25 @@ class P2Flux_WC_Payments {
 		}
 
 		$client = P2Flux_WC_Client::for_environment( $context['environment'] );
+		$terms  = array(
+			'recipient' => $context['recipient'],
+			'amount'    => P2Flux_WC_Money::format( (int) $context['units'] ),
+		);
 
 		try {
-			$created = $client->createPayment(
-				array(
-					'recipient' => $context['recipient'],
-					'amount'    => P2Flux_WC_Money::format( (int) $context['units'] ),
-				)
-			);
+			try {
+				// A native create is exactly what 1.0.0 sent: the mode field only when sponsored.
+				$created = $client->createPayment( P2Flux_WC_Sponsorship::SPONSORED === $mode ? $terms + array( 'gas_payment_mode' => 'payment_token' ) : $terms );
+			} catch ( \P2FluxWC\Vendor\P2Flux\P2FluxException $e ) {
+				if ( P2Flux_WC_Sponsorship::SPONSORED !== $mode
+					|| ( 0 !== strpos( $e->status, 'PAYMENT_TOKEN_GAS' ) && 'AMOUNT_OUT_OF_BOUNDS' !== $e->status ) ) {
+					throw $e;
+				}
+				P2Flux_WC_Logger::log( 'sponsored intent refused, minting a native one', array( 'order' => $order->get_id(), 'error' => $e->status ) );
+				P2Flux_WC_Sponsorship::mark_unavailable( $context['environment'] );
+				$mode    = P2Flux_WC_Sponsorship::NATIVE;
+				$created = $client->createPayment( $terms );
+			}
 		} catch ( \Exception $e ) {
 			P2Flux_WC_Logger::error( 'could not create a payment intent', array( 'order' => $order->get_id(), 'error' => $e->getMessage() ) );
 
@@ -119,6 +175,7 @@ class P2Flux_WC_Payments {
 			'recipient'   => strtolower( $context['recipient'] ),
 			'environment' => $context['environment'],
 			'expires'     => isset( $created['expires_at'] ) ? (int) $created['expires_at'] : time() + HOUR_IN_SECONDS,
+			'mode'        => $mode,
 		);
 
 		P2Flux_WC_Intents::add( $order, $intent );
@@ -133,6 +190,82 @@ class P2Flux_WC_Payments {
 		P2Flux_WC_Jobs::schedule_recovery( $order->get_id() );
 
 		return $intent;
+	}
+
+	/**
+	 * The customer chose the other way of paying the network fee.
+	 *
+	 * The intent they had may already be paid - they signed, then clicked the link - so that is asked
+	 * first, and a payment found ends it: nothing new is minted. Otherwise the order gets an intent of
+	 * the chosen mode, reusing one it already has.
+	 *
+	 * @param WC_Order $order Order.
+	 * @param string   $mode  P2Flux_WC_Sponsorship::NATIVE | SPONSORED.
+	 * @return array<string,mixed>|WP_Error status paid|confirming (with redirect), or switched with
+	 *                                      token and mode.
+	 */
+	public static function switch_mode( $order, $mode ) {
+		if ( ! in_array( $mode, array( P2Flux_WC_Sponsorship::NATIVE, P2Flux_WC_Sponsorship::SPONSORED ), true )
+			|| 'p2flux' !== $order->get_payment_method()
+			|| P2Flux_WC_Subscriptions::for_order( $order, true ) ) {
+			return new WP_Error( 'p2flux_mode', __( 'This order cannot change how it is paid.', 'p2flux-for-woocommerce' ) );
+		}
+		if ( $order->is_paid() ) {
+			return array(
+				'status'   => 'paid',
+				'redirect' => $order->get_checkout_order_received_url(),
+			);
+		}
+
+		$environment = (string) $order->get_meta( '_p2flux_env' );
+		$units       = (int) $order->get_meta( '_p2flux_units' );
+		$active      = P2Flux_WC_Intents::active( $order );
+		if ( ! $active || '' === $environment || ! $units ) {
+			return new WP_Error( 'p2flux_mode', __( 'This order cannot change how it is paid.', 'p2flux-for-woocommerce' ) );
+		}
+
+		try {
+			$found = P2Flux_WC_Client::for_environment( $environment )->recoverPayment( $active['intent'] );
+		} catch ( \Exception $e ) {
+			// Not knowing is not the same as not paid: switching now could invite a second payment.
+			return new WP_Error( 'p2flux_unavailable', __( 'P2Flux could not be reached. Please try again in a moment.', 'p2flux-for-woocommerce' ) );
+		}
+		if ( ! empty( $found['found'] ) ) {
+			if ( ! empty( $found['valid'] ) ) {
+				self::settle( $order, $active['intent'], $found );
+			}
+
+			return $order->is_paid()
+				? array(
+					'status'   => 'paid',
+					'redirect' => $order->get_checkout_order_received_url(),
+				)
+				: array( 'status' => 'confirming' );
+		}
+
+		if ( P2Flux_WC_Sponsorship::SPONSORED === $mode && ! P2Flux_WC_Sponsorship::allowed( $environment, $units ) ) {
+			return new WP_Error( 'p2flux_mode', __( 'Paying the network fee in USDC is not available right now.', 'p2flux-for-woocommerce' ) );
+		}
+
+		$intent = self::ensure_intent(
+			$order,
+			array(
+				'units'       => $units,
+				'recipient'   => (string) $order->get_meta( '_p2flux_recipient' ),
+				'environment' => $environment,
+				'rate'        => (string) $order->get_meta( '_p2flux_rate' ),
+				'mode'        => $mode,
+			)
+		);
+		if ( is_wp_error( $intent ) ) {
+			return $intent;
+		}
+
+		return array(
+			'status' => 'switched',
+			'token'  => $intent['intent'],
+			'mode'   => P2Flux_WC_Intents::mode( $intent ),
+		);
 	}
 
 	/**
@@ -306,6 +439,7 @@ class P2Flux_WC_Payments {
 				$explorer . '/tx/' . $hash
 			)
 		);
+		self::note_economics( $order, $verdict );
 		$order->payment_complete( $hash );
 		$order->save();
 
@@ -313,6 +447,46 @@ class P2Flux_WC_Payments {
 
 		P2Flux_WC_Jobs::unschedule_order( $order->get_id() );
 		P2Flux_WC_Jobs::schedule_sibling_check( $order );
+	}
+
+	/**
+	 * How the network fee was paid, and what the merchant received. From the verified settlement
+	 * only - never from anything the browser said.
+	 *
+	 * @param WC_Order $order   Order being paid.
+	 * @param array    $verdict Verification or recovery response.
+	 * @return void
+	 */
+	private static function note_economics( $order, array $verdict ) {
+		$sponsored = isset( $verdict['gas_payment_mode'] ) && 'payment_token' === $verdict['gas_payment_mode'];
+		$order->update_meta_data( '_p2flux_gas_mode', $sponsored ? P2Flux_WC_Sponsorship::SPONSORED : P2Flux_WC_Sponsorship::NATIVE );
+
+		$accounting = isset( $verdict['accounting'] ) && is_array( $verdict['accounting'] ) ? $verdict['accounting'] : array();
+		if ( ! isset( $accounting['merchant_net_units'] ) || ! ctype_digit( (string) $accounting['merchant_net_units'] ) ) {
+			return;
+		}
+		$net = P2Flux_WC_Money::display( (int) $accounting['merchant_net_units'] );
+
+		if ( $sponsored ) {
+			$fee = isset( $accounting['network_fee_units'] ) && ctype_digit( (string) $accounting['network_fee_units'] ) ? (int) $accounting['network_fee_units'] : 0;
+			$order->add_order_note(
+				sprintf(
+					/* translators: 1: USDC the merchant received, 2: network fee in USDC the customer paid. */
+					__( 'P2Flux: the customer paid the network fee in USDC (%2$s USDC, on top of the price). You received %1$s USDC.', 'p2flux-for-woocommerce' ),
+					$net,
+					P2Flux_WC_Money::display( $fee )
+				)
+			);
+			return;
+		}
+
+		$order->add_order_note(
+			sprintf(
+				/* translators: 1: USDC the merchant received. */
+				__( 'P2Flux: the customer paid the network fee in ETH. You received %1$s USDC.', 'p2flux-for-woocommerce' ),
+				$net
+			)
+		);
 	}
 
 	/**

@@ -375,12 +375,13 @@ function p2flux_test_register_subscription( $subscription ) {
 /**
  * Queue an API response for a path.
  *
- * @param string $path     Endpoint path.
- * @param array  $response Decoded body.
- * @param int    $status   HTTP status.
+ * @param string         $path     Endpoint path.
+ * @param array|callable $response Decoded body, or a function of the request payload returning
+ *                                 array( status, body ) - which may also throw, as the transport does.
+ * @param int            $status   HTTP status.
  * @return void
  */
-function p2flux_test_respond( $path, array $response, $status = 200 ) {
+function p2flux_test_respond( $path, $response, $status = 200 ) {
 	$GLOBALS['p2flux_test_responses'][ $path ] = array( $status, $response );
 }
 
@@ -520,6 +521,9 @@ function p2flux_test_transport() {
 		);
 
 		if ( isset( $GLOBALS['p2flux_test_responses'][ $path ] ) ) {
+			if ( is_callable( $GLOBALS['p2flux_test_responses'][ $path ][1] ) ) {
+				return call_user_func( $GLOBALS['p2flux_test_responses'][ $path ][1], $payload );
+			}
 			return $GLOBALS['p2flux_test_responses'][ $path ];
 		}
 
