@@ -28,6 +28,44 @@ class P2Flux_WC_Payments {
 	 * @return array<string,mixed>|WP_Error
 	 */
 	public static function ensure_intent( $order, array $context ) {
+		$reusable = self::reusable( $order, $context );
+		if ( $reusable ) {
+			return $reusable;
+		}
+
+		/*
+		 * Minting is a read-modify-write on the order's intent ledger. Two requests racing here - a
+		 * double click, the pay page and a retry - could each append an intent and one write would
+		 * drop the other's record: a payable instruction the order no longer knows about. So one
+		 * request mints at a time, and it re-reads the ledger first in case the other just did.
+		 */
+		$minted = P2Flux_WC_Lock::with(
+			'intent-' . $order->get_id(),
+			static function () use ( $order, $context ) {
+				if ( method_exists( $order, 'read_meta_data' ) ) {
+					$order->read_meta_data( true );
+				}
+				$reusable = self::reusable( $order, $context );
+
+				return $reusable ? $reusable : self::mint( $order, $context );
+			}
+		);
+
+		if ( false === $minted ) {
+			return new WP_Error( 'p2flux_intent_cooldown', __( 'A payment attempt for this order was just created. Please try again in a moment.', 'p2flux-for-woocommerce' ) );
+		}
+
+		return $minted;
+	}
+
+	/**
+	 * The order's current intent, if it still describes this order and is worth opening.
+	 *
+	 * @param WC_Order $order   Order.
+	 * @param array    $context units, recipient, environment.
+	 * @return array<string,mixed>|null
+	 */
+	private static function reusable( $order, array $context ) {
 		$active = P2Flux_WC_Intents::active( $order );
 
 		if ( $active
@@ -38,6 +76,17 @@ class P2Flux_WC_Payments {
 			return $active;
 		}
 
+		return null;
+	}
+
+	/**
+	 * Create a new intent and record it. Callers hold the order's intent lock.
+	 *
+	 * @param WC_Order $order   Order.
+	 * @param array    $context units, recipient, environment, rate.
+	 * @return array<string,mixed>|WP_Error
+	 */
+	private static function mint( $order, array $context ) {
 		$may = P2Flux_WC_Intents::may_mint( $order );
 		if ( true !== $may ) {
 			return new WP_Error(
@@ -195,6 +244,7 @@ class P2Flux_WC_Payments {
 	 */
 	public static function settle( $order, $intent, array $verdict ) {
 		if ( $order->is_paid() ) {
+			self::flag_duplicate( $order, $intent, $verdict );
 			return;
 		}
 
@@ -262,5 +312,61 @@ class P2Flux_WC_Payments {
 		self::stop_recurring_collection( $order );
 
 		P2Flux_WC_Jobs::unschedule_order( $order->get_id() );
+		P2Flux_WC_Jobs::schedule_sibling_check( $order );
+	}
+
+	/**
+	 * A verified settlement for an order that another intent has already paid.
+	 *
+	 * An order can hold more than one payable intent at once - the customer switched how to pay the
+	 * network fee, or an older tab was still open - and both can be paid. The second payment is real
+	 * money from the customer. It never completes the order a second time; it is recorded with what
+	 * is needed to refund it, the intent stops being polled, and the merchant is told. The same
+	 * settlement reported again (a repeated verify, a recovery that catches up) changes nothing.
+	 *
+	 * @param WC_Order $order   Order, already paid.
+	 * @param string   $intent  Intent that settled.
+	 * @param array    $verdict Verification or recovery response.
+	 * @return void
+	 */
+	private static function flag_duplicate( $order, $intent, array $verdict ) {
+		$hash = isset( $verdict['tx_hash'] ) ? (string) $verdict['tx_hash'] : '';
+		if ( '' === $hash
+			|| (string) $intent === (string) $order->get_meta( '_p2flux_settled_intent' )
+			|| strtolower( $hash ) === strtolower( (string) $order->get_meta( '_p2flux_tx_hash' ) ) ) {
+			return;
+		}
+
+		$known = json_decode( (string) $order->get_meta( '_p2flux_unexpected_payment' ), true );
+		if ( is_array( $known ) && isset( $known['tx_hash'] ) && strtolower( (string) $known['tx_hash'] ) === strtolower( $hash ) ) {
+			return;
+		}
+
+		$paid_amount = isset( $verdict['amount'] ) ? (string) $verdict['amount'] : '';
+		$paid_units  = '' !== $paid_amount ? P2Flux_WC_Money::to_scaled( $paid_amount ) : null;
+		$explorer    = P2Flux_WC_Client::explorer_url( (string) $order->get_meta( '_p2flux_env' ) );
+
+		P2Flux_WC_Intents::set_status( $order, $intent, P2Flux_WC_Intents::DUPLICATE );
+		$order->update_meta_data(
+			'_p2flux_unexpected_payment',
+			wp_json_encode(
+				array(
+					'intent'    => $intent,
+					'tx_hash'   => $hash,
+					'units'     => (int) $paid_units,
+					'duplicate' => true,
+				)
+			)
+		);
+		$order->add_order_note(
+			sprintf(
+				/* translators: 1: amount in USDC, 2: explorer URL. */
+				__( 'P2Flux: a second payment of %1$s USDC arrived for this order after it was already paid. It has NOT been applied to the order - refund it to the customer: %2$s', 'p2flux-for-woocommerce' ),
+				$paid_amount,
+				$explorer . '/tx/' . $hash
+			)
+		);
+		$order->save();
+		P2Flux_WC_Logger::error( 'a second payment arrived for an already-paid order', array( 'order' => $order->get_id() ) );
 	}
 }

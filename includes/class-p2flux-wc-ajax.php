@@ -55,7 +55,17 @@ class P2Flux_WC_Ajax {
 		// The receipt is a courier from the checkout: it lets the API answer without re-reading the
 		// chain. A bad one costs nothing - verification falls back to the full check.
 		$receipt = isset( $_POST['settlement_receipt'] ) ? sanitize_text_field( wp_unslash( $_POST['settlement_receipt'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_order() before this runs.
-		$intent  = P2Flux_WC_Intents::active( $order );
+		/*
+		 * Which intent the checkout was paying. The page says, because the order may hold more than
+		 * one payable intent; but the page is only believed when the token is one of THIS order's own
+		 * intents, and even then it only chooses which intent the API verifies - the API's verdict and
+		 * the amount check still decide whether anything is paid.
+		 */
+		$posted = isset( $_POST['intent'] ) ? sanitize_text_field( wp_unslash( $_POST['intent'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was checked in authorized_order() before this runs.
+		$intent = P2Flux_WC_Intents::find( $order, $posted );
+		if ( ! $intent ) {
+			$intent = P2Flux_WC_Intents::active( $order );
+		}
 		if ( ! $intent ) {
 			wp_send_json_error( array( 'code' => 'NO_INTENT' ), 400 );
 		}

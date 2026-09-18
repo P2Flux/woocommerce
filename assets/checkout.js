@@ -22,6 +22,7 @@
 	var statusLine = document.getElementById( 'p2flux-status' );
 	var popup = null;
 	var settled = false;
+	var openedToken = '';
 
 	/**
 	 * The status line is the only thing that talks.
@@ -84,7 +85,7 @@
 	function verify( txHash, receipt ) {
 		say( config.i18n.verifying, 'busy' );
 
-		post( config.ajax.verify, { tx_hash: txHash, settlement_receipt: receipt || '' } )
+		post( config.ajax.verify, { tx_hash: txHash, settlement_receipt: receipt || '', intent: openedToken || config.token || '' } )
 			.then( function ( response ) {
 				var result = response && response.data ? response.data : {};
 
@@ -207,6 +208,9 @@
 	}
 
 	function hostedUrl() {
+		// Remember which intent the window was sent to pay: the one verification must ask about,
+		// even if the page's current intent changes while that window is still open.
+		openedToken = config.token;
 		return config.checkout + '/#/' + config.mode + '/' + encodeURIComponent( config.token );
 	}
 

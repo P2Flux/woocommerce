@@ -63,6 +63,7 @@ rm -rf "$tmp"
 php "$root/tests/unit.php" >/dev/null || note "the unit suite does not pass"
 php "$root/tests/integration.php" >/dev/null || note "the invariant suite does not pass"
 php "$root/tests/native.php" >/dev/null || note "the native subscription suite does not pass"
+php "$root/tests/payments.php" >/dev/null || note "the one-time payment suite does not pass"
 
 [ "$fail" -eq 0 ] && echo "release checks passed"
 exit "$fail"

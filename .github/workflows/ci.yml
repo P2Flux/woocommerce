@@ -32,6 +32,7 @@ jobs:
       - run: php tests/unit.php
       - run: php tests/integration.php
       - run: php tests/native.php
+      - run: php tests/payments.php
 
   security-sniffs:
     name: WordPress security sniffs

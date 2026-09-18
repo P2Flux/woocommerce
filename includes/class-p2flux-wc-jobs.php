@@ -239,13 +239,20 @@ class P2Flux_WC_Jobs {
 	 */
 	public static function recover_order( $order_id ) {
 		$order = wc_get_order( $order_id );
-		if ( ! $order || $order->is_paid() ) {
+		if ( ! $order ) {
 			return;
 		}
 
+		/*
+		 * A paid order is only asked about again when another of its intents could still settle
+		 * (schedule_sibling_check). Anything found then is a second payment, which settle() records
+		 * for a refund and never applies - so every open sibling is asked, not just the first.
+		 */
+		$paid = $order->is_paid();
+
 		// A deliberately cancelled order is not a lost payment. Only one this plugin let Woo cancel
 		// while a payment was outstanding may come back to life.
-		if ( 'cancelled' === $order->get_status() && ! $order->get_meta( '_p2flux_auto_cancelled' ) ) {
+		if ( ! $paid && 'cancelled' === $order->get_status() && ! $order->get_meta( '_p2flux_auto_cancelled' ) ) {
 			return;
 		}
 
@@ -264,7 +271,9 @@ class P2Flux_WC_Jobs {
 			}
 
 			P2Flux_WC_Payments::settle( $order, $intent['intent'], $found );
-			return;
+			if ( ! $paid ) {
+				return;
+			}
 		}
 	}
 
@@ -324,6 +333,29 @@ class P2Flux_WC_Jobs {
 		// Native subscriptions: signups whose window closed, schedules that lost their job.
 		if ( class_exists( 'P2Flux_WC_Native_Scheduler' ) ) {
 			P2Flux_WC_Native_Scheduler::sweep();
+		}
+	}
+
+	/**
+	 * After an order is paid, look once more at any other intent it still holds.
+	 *
+	 * Paying unschedules the order's recovery ladder, so without this a second payment on a sibling
+	 * intent would never be noticed. One check, after the last sibling can no longer start a payment.
+	 *
+	 * @param WC_Order $order Paid order.
+	 * @return void
+	 */
+	public static function schedule_sibling_check( $order ) {
+		if ( ! function_exists( 'as_schedule_single_action' ) ) {
+			return;
+		}
+
+		$latest = 0;
+		foreach ( P2Flux_WC_Intents::recoverable( $order ) as $intent ) {
+			$latest = max( $latest, (int) $intent['expires'] );
+		}
+		if ( $latest > 0 ) {
+			as_schedule_single_action( max( time(), $latest ) + 900, self::RECOVER, array( (int) $order->get_id() ), self::GROUP );
 		}
 	}
 

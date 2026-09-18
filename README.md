@@ -60,6 +60,7 @@ assets/                             checkout, blocks, admin and account scripts 
 tests/unit.php                      offline: money, decisions, crypto, history
 tests/integration.php               offline: the cross-class invariants, against a stub API
 tests/native.php                    offline: the native engine (activation window, misses, downtime, expiry)
+tests/payments.php                  offline: one-time payments (minting, verification, second payments, recovery)
 dev/                                docker store, release checks, the dev-only period fixture
 ```
 
@@ -77,6 +78,7 @@ Read it before changing anything under `includes/` that touches an order's paid 
 php tests/unit.php            # 119 checks, no WordPress needed
 php tests/integration.php     # 42 checks, real charger against a fake store and a stub API
 php tests/native.php          # 80 checks, the native engine against an in-memory store
+php tests/payments.php        # one-time payments against a stub API
 bash dev/release-check.sh     # everything that must be true of a package
 
 docker compose -f dev/docker-compose.yml up -d

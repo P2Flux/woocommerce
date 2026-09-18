@@ -34,6 +34,8 @@ class P2Flux_WC_Intents {
 	const SETTLED = 'settled';
 	/** Past its expiry with nothing settled, and past the window we still poll. */
 	const EXPIRED = 'expired';
+	/** Settled, but after the order had already been paid by another intent: money to refund. */
+	const DUPLICATE = 'duplicate';
 
 	/** How long after expiry an intent stays in the polled set. */
 	const RECOVERY_WINDOW = 7 * DAY_IN_SECONDS;
@@ -76,6 +78,30 @@ class P2Flux_WC_Intents {
 	}
 
 	/**
+	 * One of THIS order's intents, looked up by its token, or null.
+	 *
+	 * The browser reports which intent it paid; this is how that report is checked. A token that is
+	 * not in the order's own ledger is ignored, so a page cannot point verification at an intent
+	 * belonging to some other order.
+	 *
+	 * @param WC_Order $order Order.
+	 * @param string   $token Intent token.
+	 * @return array<string,mixed>|null
+	 */
+	public static function find( $order, $token ) {
+		if ( ! is_string( $token ) || '' === $token ) {
+			return null;
+		}
+		foreach ( self::all( $order ) as $item ) {
+			if ( hash_equals( (string) $item['intent'], $token ) ) {
+				return $item;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * The intents background recovery should still ask about.
 	 *
 	 * Settled ones are done. Ones long past expiry are dropped from the poll - not from the ledger -
@@ -90,7 +116,7 @@ class P2Flux_WC_Intents {
 		$open = array();
 
 		foreach ( self::all( $order ) as $item ) {
-			if ( self::SETTLED === $item['status'] ) {
+			if ( in_array( $item['status'], array( self::SETTLED, self::DUPLICATE ), true ) ) {
 				continue;
 			}
 			if ( (int) $item['expires'] + self::RECOVERY_WINDOW < $now ) {
