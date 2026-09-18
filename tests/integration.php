@@ -108,6 +108,10 @@ function scenario( $id, $auth, $period = 2419200 ) {
 	return array( $subscription, $renewal );
 }
 
+// Sponsorship is switched on for the whole of this file: nothing recurring may
+// ask about it, or send a gas mode it did not send before.
+update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'test', 'sponsored' => 'yes' ) );
+
 echo "\nthe browser is never the authority\n";
 
 list( $subscription, $renewal ) = scenario( 10, $AUTH );
@@ -350,6 +354,12 @@ foreach ( $GLOBALS['p2flux_test_orders'] as $order ) {
 }
 check( 'no order note contains a capability', ! $leaked );
 check( 'and the redactor removes one if it ever appears', '[p2s2 redacted] arrived' === P2Flux_WC_Logger::redact( 'p2s2.k1.body.mac arrived' ) );
+
+echo "\nthe sponsored setting does not reach recurring payments\n";
+$ever = $GLOBALS['p2flux_test_ever'];
+check( 'the recurring flows made requests at all', count( $ever ) > 10 );
+check( 'no capabilities call anywhere in them', array() === array_filter( $ever, static function ( $call ) { return '/v1/capabilities' === $call['path']; } ) );
+check( 'no request carried a gas payment mode', array() === array_filter( $ever, static function ( $call ) { return is_array( $call['payload'] ) && array_key_exists( 'gas_payment_mode', $call['payload'] ); } ) );
 
 echo "\n";
 echo 0 === $failures

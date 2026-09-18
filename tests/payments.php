@@ -27,6 +27,7 @@ require __DIR__ . '/../includes/class-p2flux-wc-jobs.php';
 require __DIR__ . '/../includes/class-p2flux-wc-intents.php';
 require __DIR__ . '/../includes/class-p2flux-wc-sponsorship.php';
 require __DIR__ . '/../includes/class-p2flux-wc-checkout-page.php';
+require __DIR__ . '/../includes/class-p2flux-wc-refunds.php';
 require __DIR__ . '/../includes/class-p2flux-wc-payments.php';
 require __DIR__ . '/../includes/class-p2flux-wc-ajax.php';
 
@@ -626,6 +627,67 @@ P2Flux_WC_Jobs::recover_order( 663 );
 check( 'recovery pays it without any verify call', $order->is_paid() && 0 === count( p2flux_test_calls( '/v1/payments/verify' ) ) );
 check( 'with the gas mode stored', 'sponsored' === $order->get_meta( '_p2flux_gas_mode' ) );
 check( 'and the recovery ladder dropped', 0 === count( scheduled( 663, P2Flux_WC_Jobs::RECOVER ) ) );
+
+
+echo "\nscheduler health\n";
+$GLOBALS['p2flux_test_scheduled'] = array();
+as_schedule_recurring_action( time() + 3600, DAY_IN_SECONDS, P2Flux_WC_Jobs::SWEEP, array(), P2Flux_WC_Jobs::GROUP );
+check( 'the daily sweep pending in the future: healthy', '' === P2Flux_WC_Jobs::health() );
+as_schedule_single_action( time() - 50 * MINUTE_IN_SECONDS, P2Flux_WC_Jobs::RECOVER, array( 700 ), P2Flux_WC_Jobs::GROUP );
+define( 'DISABLE_WP_CRON', true );
+check( 'a job 50 minutes late under a server cron (WP-Cron disabled): no warning', '' === P2Flux_WC_Jobs::health() );
+as_schedule_single_action( time() - 3 * HOUR_IN_SECONDS, 'some_other_plugin_job', array(), 'other' );
+check( 'another plugin\'s overdue job is not ours', '' === P2Flux_WC_Jobs::health() );
+as_schedule_single_action( time() - 2 * HOUR_IN_SECONDS - 60, P2Flux_WC_Jobs::RECOVER, array( 701 ), P2Flux_WC_Jobs::GROUP );
+check( 'a P2Flux job more than two hours overdue: late', 'late' === P2Flux_WC_Jobs::health() );
+$GLOBALS['p2flux_test_scheduled'][ count( $GLOBALS['p2flux_test_scheduled'] ) - 1 ]['status'] = 'complete';
+check( 'once it has run, healthy again', '' === P2Flux_WC_Jobs::health() );
+$missing = shell_exec(
+	escapeshellarg( PHP_BINARY ) . ' -r ' . escapeshellarg(
+		'define("ABSPATH", "/"); define("HOUR_IN_SECONDS", 3600); define("MINUTE_IN_SECONDS", 60); define("DAY_IN_SECONDS", 86400);'
+		. ' require ' . var_export( __DIR__ . '/../includes/class-p2flux-wc-jobs.php', true ) . '; echo P2Flux_WC_Jobs::health();'
+	)
+);
+check( 'no Action Scheduler at all: missing', 'missing' === $missing, (string) $missing );
+$source = '';
+foreach ( glob( __DIR__ . '/../includes/*.php' ) as $file ) {
+	foreach ( token_get_all( file_get_contents( $file ) ) as $token ) {
+		// Code only: the docblock that explains why it is not read may name it.
+		$source .= ( is_array( $token ) && in_array( $token[0], array( T_COMMENT, T_DOC_COMMENT ), true ) ) ? '' : ( is_array( $token ) ? $token[1] : $token );
+	}
+}
+check( 'DISABLE_WP_CRON is never read by the plugin', false === strpos( $source, 'DISABLE_WP_CRON' ) );
+
+
+echo "\nrefunding a sponsored payment: in full, once\n";
+$GLOBALS['wc_refunds'] = array();
+function wc_create_refund( $args ) {
+	$GLOBALS['wc_refunds'][] = $args;
+	return (object) $args;
+}
+$order = wc_get_order( 660 ); // paid above, sponsored
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/refunds/prepare', array( 'refund_token' => 'rt_1', 'refund_amount' => '12990000' ) );
+$prepared = P2Flux_WC_Refunds::prepare( $order );
+$asked    = p2flux_test_calls( '/v1/refunds/prepare' );
+check( 'the refund is prepared for the price the order paid, not the buyer total', is_array( $prepared ) && '12990000' === $asked[0]['payload']['amount'] && $order->get_meta( '_p2flux_settled_intent' ) === $asked[0]['payload']['intent'] );
+p2flux_test_respond( '/v1/refunds/verify', array( 'status' => 'REFUNDED', 'refund_tx_hash' => tx( 50 ) ) );
+$done = P2Flux_WC_Refunds::verify( $order, tx( 50 ) );
+check( 'a verified refund records one WooCommerce refund of the order total', 'refunded' === $done['status'] && 1 === count( $GLOBALS['wc_refunds'] ) && '12.99' === $GLOBALS['wc_refunds'][0]['amount'] && false === $GLOBALS['wc_refunds'][0]['refund_payment'] );
+$again = P2Flux_WC_Refunds::verify( $order, tx( 50 ) );
+check( 'verifying it again records nothing more', 'refunded' === $again['status'] && 1 === count( $GLOBALS['wc_refunds'] ) );
+check( 'and a second refund cannot be prepared', is_wp_error( P2Flux_WC_Refunds::prepare( $order ) ) );
+
+$order  = new_order( 664 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 51 ), array( 'gas_payment_mode' => 'payment_token' ) ) );
+P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 51 ) );
+P2Flux_WC_Refunds::prepare( $order );
+p2flux_test_respond( '/v1/refunds/verify', array( 'error' => 'REFUND_AMOUNT_INVALID' ), 400 );
+check( 'a refused refund is an error', is_wp_error( P2Flux_WC_Refunds::verify( $order, tx( 52 ) ) ) );
+p2flux_test_respond( '/v1/refunds/verify', array( 'valid' => false, 'code' => 'REFUND_RECIPIENT_MISMATCH' ) );
+check( 'an unmatched transfer is an error', is_wp_error( P2Flux_WC_Refunds::verify( $order, tx( 52 ) ) ) );
+check( 'and neither records a WooCommerce refund', 1 === count( $GLOBALS['wc_refunds'] ) && P2Flux_WC_Refunds::REFUNDED !== P2Flux_WC_Refunds::state( $order )['status'] );
 
 echo "\n";
 echo 0 === $failures

@@ -23,6 +23,7 @@ $GLOBALS['p2flux_test_notes']         = array();
 $GLOBALS['p2flux_test_locks']         = array();
 $GLOBALS['p2flux_test_periods']       = array();
 $GLOBALS['p2flux_test_calls']         = array();
+$GLOBALS['p2flux_test_ever']          = array();
 $GLOBALS['p2flux_test_responses']     = array();
 $GLOBALS['p2flux_test_filters']       = array();
 
@@ -519,6 +520,11 @@ function p2flux_test_transport() {
 			'path'    => $path,
 			'payload' => $payload,
 		);
+		// Never reset, so a suite can assert something over everything it did.
+		$GLOBALS['p2flux_test_ever'][] = array(
+			'path'    => $path,
+			'payload' => $payload,
+		);
 
 		if ( isset( $GLOBALS['p2flux_test_responses'][ $path ] ) ) {
 			if ( is_callable( $GLOBALS['p2flux_test_responses'][ $path ][1] ) ) {
@@ -613,12 +619,13 @@ function is_wp_error( $thing ) {
  * @return int
  */
 function as_schedule_single_action( $timestamp, $hook, $args = array(), $group = '' ) {
-	unset( $group );
 	$GLOBALS['p2flux_test_scheduled'][] = array(
-		'hook'  => $hook,
-		'order' => isset( $args[0] ) ? (int) $args[0] : 0,
-		'delay' => max( 0, $timestamp - time() ),
-		'time'  => (int) $timestamp,
+		'hook'   => $hook,
+		'order'  => isset( $args[0] ) ? (int) $args[0] : 0,
+		'delay'  => max( 0, $timestamp - time() ),
+		'time'   => (int) $timestamp,
+		'group'  => $group,
+		'status' => 'pending',
 	);
 
 	return count( $GLOBALS['p2flux_test_scheduled'] );
@@ -651,9 +658,31 @@ function as_next_scheduled_action( $hook, $args = array(), $group = '' ) {
  * @return int
  */
 function as_schedule_recurring_action( $timestamp, $interval, $hook, $args = array(), $group = '' ) {
-	unset( $interval, $group );
+	unset( $interval );
 
-	return as_schedule_single_action( $timestamp, $hook, $args );
+	return as_schedule_single_action( $timestamp, $hook, $args, $group );
+}
+
+/**
+ * The query the scheduler health check makes: group, status, and a date compared with <=.
+ *
+ * @param array  $query  Query.
+ * @param string $format Return format; ids only here.
+ * @return array<int,int>
+ */
+function as_get_scheduled_actions( $query = array(), $format = 'ids' ) {
+	unset( $format );
+	$found = array();
+	foreach ( $GLOBALS['p2flux_test_scheduled'] as $index => $job ) {
+		if ( ( isset( $query['group'] ) && $job['group'] !== $query['group'] )
+			|| ( isset( $query['status'] ) && $job['status'] !== $query['status'] )
+			|| ( isset( $query['date'] ) && '<=' === $query['date_compare'] && $job['time'] > (int) $query['date'] ) ) {
+			continue;
+		}
+		$found[] = $index + 1;
+	}
+
+	return array_slice( $found, 0, isset( $query['per_page'] ) ? (int) $query['per_page'] : 5 );
 }
 
 /**
