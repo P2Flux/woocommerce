@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 — unreleased
+## 1.1.0 — 2026-09-18
 
 - No-ETH checkout: a one-time payment can be minted with its network fee paid in USDC
   (`gas_payment_mode: payment_token`), so the customer needs no ETH. The merchant receives the

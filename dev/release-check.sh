@@ -67,5 +67,13 @@ php "$root/tests/integration.php" >/dev/null || note "the invariant suite does n
 php "$root/tests/native.php" >/dev/null || note "the native subscription suite does not pass"
 php "$root/tests/payments.php" >/dev/null || note "the one-time payment suite does not pass"
 
+# The three places a version is written must agree, and the readme must describe that version.
+v_header="$(grep -m1 '^ \* Version:' "$root/p2flux-for-woocommerce.php" | awk '{print $3}')"
+v_const="$(sed -n "s/^define( 'P2FLUX_WC_VERSION', '\([^']*\)' );$/\1/p" "$root/p2flux-for-woocommerce.php")"
+v_stable="$(sed -n 's/^Stable tag: //p' "$root/readme.txt")"
+{ [ -n "$v_header" ] && [ "$v_header" = "$v_const" ] && [ "$v_header" = "$v_stable" ]; } \
+  || note "versions disagree: header '$v_header', constant '$v_const', stable tag '$v_stable'"
+grep -qF "= $v_header =" "$root/readme.txt" || note "readme.txt has no changelog entry for $v_header"
+
 [ "$fail" -eq 0 ] && echo "release checks passed"
 exit "$fail"
