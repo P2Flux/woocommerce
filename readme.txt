@@ -10,7 +10,7 @@ Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Accept USDC on Base directly to your own wallet, including subscriptions. Non-custodial: nobody holds your money but you.
+Accept USDC on Base straight to your own wallet, subscriptions included. Customers need no ETH. Non-custodial: nobody holds your money but you.
 
 == Description ==
 
