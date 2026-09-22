@@ -10,6 +10,12 @@ moves from the customer's wallet to yours in one transaction, and nobody holds i
   production.
 - **Refunds** from your own wallet, recorded in WooCommerce only after P2Flux confirms them on chain.
 
+**Install it from the WordPress.org plugin directory:**
+[wordpress.org/plugins/p2flux-for-woocommerce](https://wordpress.org/plugins/p2flux-for-woocommerce/)
+(Plugins → Add New → search "P2Flux"). The same package is attached to each
+[GitHub release](https://github.com/P2Flux/woocommerce/releases/latest) for stores that install by
+upload.
+
 The merchant-facing guide — installation, configuration, every renewal outcome, cancellation,
 refunds, troubleshooting — is at [p2flux.com/docs/woocommerce.html](https://p2flux.com/docs/woocommerce.html).
 `readme.txt` is the WordPress.org listing. This file is for people working on the plugin.
