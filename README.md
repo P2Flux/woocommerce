@@ -20,6 +20,8 @@ The merchant-facing guide — installation, configuration, every renewal outcome
 refunds, troubleshooting — is at [p2flux.com/docs/woocommerce.html](https://p2flux.com/docs/woocommerce.html).
 `readme.txt` is the WordPress.org listing. This file is for people working on the plugin.
 
+Selling to AI agents? See P2Flux Agent Paywall: https://p2flux.com/docs/agent-paywall.html
+
 ## Requirements
 
 Taken from the plugin header and from the checks the gateway makes before offering itself:
