@@ -165,6 +165,13 @@ class P2Flux_WC_Payments {
 		} catch ( \Exception $e ) {
 			P2Flux_WC_Logger::error( 'could not create a payment intent', array( 'order' => $order->get_id(), 'error' => $e->getMessage() ) );
 
+			// Sanctions screening: retrying will not help, and the shopper is not told why.
+			if ( $e instanceof \P2FluxWC\Vendor\P2Flux\P2FluxException && 'RECIPIENT_SANCTIONED' === $e->status ) {
+				P2Flux_WC_Logger::error( 'the receiving wallet in the P2Flux settings is on the OFAC sanctions list - P2Flux refuses payments to it', array( 'order' => $order->get_id() ) );
+
+				return new WP_Error( 'p2flux_refused', __( 'This payment cannot be processed. No transaction was submitted.', 'p2flux-for-woocommerce' ) );
+			}
+
 			return new WP_Error( 'p2flux_unavailable', __( 'P2Flux could not be reached. Please try again in a moment.', 'p2flux-for-woocommerce' ) );
 		}
 

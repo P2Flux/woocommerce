@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
 WC tested up to: 11.0
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -271,6 +271,10 @@ working while new ones use the new key.
 9. A simple product turned into a P2Flux Native Subscription with one checkbox and an interval.
 
 == Changelog ==
+
+= 1.1.1 =
+* Sanctions screening (P2Flux checks wallets against the U.S. OFAC list): if the store's receiving wallet is refused, the customer sees "This payment cannot be processed. No transaction was submitted." instead of "P2Flux could not be reached", and the log says to check the wallet in the settings.
+* A renewal refused because the customer's wallet is sanctioned now says so in the order note (it said "expired"); a renewal refused because the store's wallet is listed tells the merchant to check the wallet and is never retried.
 
 = 1.1.0 =
 * No-ETH checkout: customers can pay a one-time order's network fee in USDC and need no ETH. On by default for new installs, off for upgrades; costs the merchant an extra fixed 0.10 USDC per payment made that way.

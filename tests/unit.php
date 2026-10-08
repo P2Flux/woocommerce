@@ -195,6 +195,14 @@ $revoked = P2Flux_WC_Renewal::decide( charge_result( 'PERMISSION_REVOKED', 'STOP
 check( 'a revoked authorization cancels', 'cancel' === $revoked['outcome'] );
 check( 'and never retries', null === $revoked['schedule'] );
 
+$payer_sanctioned = P2Flux_WC_Renewal::decide( charge_result( 'PAYER_SANCTIONED', 'STOP_SUBSCRIPTION' ) );
+check( 'a sanctioned payer cancels the subscription', 'cancel' === $payer_sanctioned['outcome'] && null === $payer_sanctioned['schedule'] );
+check( 'with a note that says why, not "expired"', false !== strpos( $payer_sanctioned['note'], 'sanctions screening' ) );
+
+$store_sanctioned = P2Flux_WC_Renewal::decide( charge_result( 'RECIPIENT_SANCTIONED', 'INVALID_REQUEST' ) );
+check( 'a sanctioned store wallet is never retried', null === $store_sanctioned['schedule'] );
+check( 'and tells the merchant to check the wallet', true === $store_sanctioned['admin'] && false !== strpos( $store_sanctioned['note'], 'receiving wallet' ) );
+
 $invalid = P2Flux_WC_Renewal::decide( charge_result( 'INVALID_SUBSCRIPTION', 'INVALID_REQUEST' ) );
 check( 'a deterministic refusal schedules ZERO retries', null === $invalid['schedule'] );
 check( 'and asks a human to look', true === $invalid['admin'] );

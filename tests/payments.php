@@ -177,6 +177,14 @@ check( 'exactly one create request was made', 1 === count( p2flux_test_calls( '/
 check( 'the ledger holds exactly one intent', 1 === count( P2Flux_WC_Intents::all( $order ) ) );
 check( 'the recovery ladder is scheduled', 5 === count( scheduled( 501, P2Flux_WC_Jobs::RECOVER ) ) );
 
+echo "\na store wallet on the sanctions list: a neutral refusal, not 'could not be reached'\n";
+$order = new_order( 509 );
+p2flux_test_respond( '/v1/payments', static function () { throw new \P2FluxWC\Vendor\P2Flux\P2FluxException( 'RECIPIENT_SANCTIONED', 'INVALID_REQUEST' ); } );
+$refused = P2Flux_WC_Payments::ensure_intent( $order, context() );
+check( 'the shopper is told the payment cannot be processed', is_wp_error( $refused ) && 'p2flux_refused' === $refused->get_error_code() );
+check( 'and that nothing was submitted', is_wp_error( $refused ) && false !== strpos( $refused->get_error_message(), 'No transaction was submitted' ) );
+check( 'no intent is stored', 0 === count( P2Flux_WC_Intents::all( $order ) ) );
+
 echo "\nminting is serialised by the order's intent lock\n";
 $order = new_order( 502 );
 respond_create();

@@ -172,7 +172,9 @@ class P2Flux_WC_Renewal {
 					'collection'   => P2Flux_WC_Collection::CANCELLED,
 					'note'         => 'PERMISSION_REVOKED' === $status
 						? 'The customer revoked this authorization on chain. No further charges are possible.'
-						: 'The authorization has expired. No further charges are possible.',
+						: ( 'PAYER_SANCTIONED' === $status
+							? 'P2Flux cannot process payments from this customer\'s wallet (sanctions screening). No transaction was submitted and no further charges will be attempted.'
+							: 'The authorization has expired. No further charges are possible.' ),
 					'notify'       => true,
 				)
 			);
@@ -189,7 +191,9 @@ class P2Flux_WC_Renewal {
 					'outcome'      => 'failed',
 					'order_status' => 'failed',
 					'collection'   => P2Flux_WC_Collection::REAUTH_REQUIRED,
-					'note'         => sprintf( 'P2Flux refused this charge as invalid (%s). Retrying cannot fix it.', $status ),
+					'note'         => 'RECIPIENT_SANCTIONED' === $status
+						? 'P2Flux cannot send payments to this store\'s receiving wallet: it is on the U.S. OFAC sanctions list. No transaction was submitted. Check the wallet in the P2Flux settings.'
+						: sprintf( 'P2Flux refused this charge as invalid (%s). Retrying cannot fix it.', $status ),
 					'admin'        => true,
 				)
 			);
