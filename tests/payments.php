@@ -292,8 +292,17 @@ respond_create();
 $b = P2Flux_WC_Payments::ensure_intent( $order, context() );
 $GLOBALS['p2flux_test_scheduled'] = array();
 
+// Another request is recording this order right now (it holds the order's settle lock): this one records nothing.
+$busy = P2Flux_WC_Lock::acquire( 'settle-' . $order->get_id() );
+P2Flux_WC_Payments::settle( $order, $b['intent'], verdict( 10 ) );
+check( 'a second recorder for the same order steps aside while the first holds the lock', ! $order->is_paid() );
+P2Flux_WC_Lock::release( 'settle-' . $order->get_id(), $busy );
+
 P2Flux_WC_Payments::settle( $order, $b['intent'], verdict( 10 ) );
 check( 'the first settlement pays the order', $order->is_paid() && tx( 10 ) === $order->completed_with );
+$again = P2Flux_WC_Lock::acquire( 'settle-' . $order->get_id() );
+check( 'and the settle lock is released afterwards', false !== $again );
+P2Flux_WC_Lock::release( 'settle-' . $order->get_id(), $again );
 $sibling = scheduled( 507, P2Flux_WC_Jobs::RECOVER );
 check( 'one sibling check is scheduled because the other intent can still settle', 1 === count( $sibling ) );
 check( 'after that intent can no longer start a payment', 1 === count( $sibling ) && $sibling[0]['time'] >= (int) $ledger[0]['expires'] + 900 );

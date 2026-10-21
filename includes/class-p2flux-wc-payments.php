@@ -383,6 +383,34 @@ class P2Flux_WC_Payments {
 	 * @return void
 	 */
 	public static function settle( $order, $intent, array $verdict ) {
+		/*
+		 * One recorder per order at a time. Verify, the status check, the mode switch and the recovery
+		 * job can all reach here for the same order at once; without the lock each read is_paid() from
+		 * its own copy and both completed the order (two emails, stock twice, a second payment's
+		 * refund data lost). The loser simply returns: the winner is recording it right now.
+		 */
+		$key   = 'settle-' . $order->get_id();
+		$token = P2Flux_WC_Lock::acquire( $key );
+		if ( false === $token ) {
+			return;
+		}
+		try {
+			// Re-read inside the lock: the request that held it a moment ago may have just paid this order.
+			$fresh = wc_get_order( $order->get_id() );
+			self::settle_locked( $fresh ? $fresh : $order, $intent, $verdict );
+		} finally {
+			P2Flux_WC_Lock::release( $key, $token );
+		}
+	}
+
+	/**
+	 * Record a verified settlement against the order. Only ever called holding the order's settle lock.
+	 *
+	 * @param WC_Order $order   The order.
+	 * @param string   $intent  The intent the settlement verified against.
+	 * @param array    $verdict The API's verdict.
+	 */
+	private static function settle_locked( $order, $intent, array $verdict ) {
 		if ( $order->is_paid() ) {
 			self::flag_duplicate( $order, $intent, $verdict );
 			return;
