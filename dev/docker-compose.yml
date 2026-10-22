@@ -7,6 +7,10 @@
 #
 #   docker compose -f dev/docker-compose.yml up -d
 #   dev/setup.sh
+# Its own project name: the Blesta dev stack also lives in a folder called dev/, and the default
+# (the folder name) made the two share container names (2026-10-22).
+name: p2flux-woo-dev
+
 services:
   db:
     image: mariadb:11
@@ -23,7 +27,7 @@ services:
       retries: 20
 
   wordpress:
-    image: wordpress:6.7-php8.3-apache
+    image: wordpress:php8.3-apache
     depends_on:
       db:
         condition: service_healthy
