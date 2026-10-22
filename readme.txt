@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
 WC tested up to: 11.0
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -271,6 +271,10 @@ working while new ones use the new key.
 9. A simple product turned into a P2Flux Native Subscription with one checkbox and an interval.
 
 == Changelog ==
+
+= 1.1.2 =
+* One order is recorded once: when the payment page, the status check and the recovery job confirm the same order at the same moment, only one of them completes it (no duplicate emails or stock changes).
+* A refund of an order paid through a privacy service (such as Hinkal) now explains that P2Flux cannot send it back to the payer, and how to refund it manually, instead of "please try again".
 
 = 1.1.1 =
 * Sanctions screening (P2Flux checks wallets against the U.S. OFAC list): if the store's receiving wallet is refused, the customer sees "This payment cannot be processed. No transaction was submitted." instead of "P2Flux could not be reached", and the log says to check the wallet in the settings.

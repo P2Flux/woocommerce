@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2 — 2026-10-22
+
+- `settle()` takes an order-keyed `P2Flux_WC_Lock` lease and re-reads the order inside it: two
+  confirmations of one order at the same moment (verify, status check, mode switch, recovery job)
+  complete it once.
+- `REFUND_PAYER_UNSUPPORTED` (payment made through a privacy service such as Hinkal's Emporium)
+  gets its own message: refund manually to an address the customer gives, not "try again".
+
 ## 1.1.0 — 2026-09-18
 
 - No-ETH checkout: a one-time payment can be minted with its network fee paid in USDC
