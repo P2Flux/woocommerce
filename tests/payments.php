@@ -689,6 +689,11 @@ function wc_create_refund( $args ) {
 }
 $order = wc_get_order( 660 ); // paid above, sponsored
 p2flux_test_reset_calls();
+// Paid through Hinkal's Emporium: P2Flux refuses, and the merchant is told why instead of "try again".
+p2flux_test_respond( '/v1/refunds/prepare', array( 'error' => 'REFUND_PAYER_UNSUPPORTED', 'action' => 'STOP' ), 409 );
+$private = P2Flux_WC_Refunds::prepare( $order );
+check( 'a refund of a privately paid order says why it cannot be sent', is_wp_error( $private ) && 'p2flux_payer_unsupported' === $private->get_error_code() );
+check( 'and leaves the order free for a manual refund', P2Flux_WC_Refunds::RESERVED !== P2Flux_WC_Refunds::state( $order )['status'] );
 p2flux_test_respond( '/v1/refunds/prepare', array( 'refund_token' => 'rt_1', 'refund_amount' => '12990000' ) );
 $prepared = P2Flux_WC_Refunds::prepare( $order );
 $asked    = p2flux_test_calls( '/v1/refunds/prepare' );

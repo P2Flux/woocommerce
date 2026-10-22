@@ -84,6 +84,11 @@ class P2Flux_WC_Refunds {
 			self::clear( $order );
 			P2Flux_WC_Logger::error( 'could not prepare a refund', array( 'order' => $order->get_id(), 'error' => $e->getMessage() ) );
 
+			// Paid through a privacy service (Hinkal): a refund to the payer would be lost, and retrying never helps.
+			if ( $e instanceof \P2FluxWC\Vendor\P2Flux\P2FluxException && 'REFUND_PAYER_UNSUPPORTED' === $e->status ) {
+				return new WP_Error( 'p2flux_payer_unsupported', __( 'This order was paid through a privacy service, so P2Flux cannot send a refund back to the payer. Nothing was sent. Ask the customer for a wallet address and refund it from your own wallet.', 'p2flux-for-woocommerce' ) );
+			}
+
 			return new WP_Error( 'p2flux_unavailable', __( 'P2Flux could not prepare this refund. Nothing was sent; please try again.', 'p2flux-for-woocommerce' ) );
 		}
 
