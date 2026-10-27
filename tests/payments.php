@@ -663,7 +663,7 @@ unset( $accounting['refundable'] );
 $accounting['payer'] = '0x' . str_repeat( 'b0', 20 );
 p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 51 ), array( 'gas_payment_mode' => 'native', 'accounting' => $accounting ) ) );
 P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 51 ) );
-check( 'a normal payment gets no private note', $order->is_paid() && '' === (string) $order->get_meta( '_p2flux_refundable' ) && 0 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'paid privately' ); } ) ) );
+check( 'a normal payment is marked refundable, with no private note', $order->is_paid() && 'yes' === (string) $order->get_meta( '_p2flux_refundable' ) && 0 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'paid privately' ); } ) ) );
 
 echo "\nprivate payments: renewals, reuse after a toggle, fallback, odd settlements\n";
 function respond_create_echo() {
@@ -726,7 +726,18 @@ $a     = P2Flux_WC_Payments::ensure_intent( $order, context() );
 $order->update_meta_data( '_p2flux_units', PRICE + 1000000 );
 p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 54 ), array( 'accounting' => array( 'payer' => '0xf66d', 'refundable' => false ) ) ) );
 P2Flux_WC_Payments::verify( $order, $a['intent'], tx( 54 ) );
-check( 'an unexpected private payment: flagged, and the refund note says how', ! $order->is_paid() && 'no' === $order->get_meta( '_p2flux_refundable' ) );
+$private_notes = static function ( $order ) { return count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'paid privately' ); } ) ); };
+check( 'an unexpected private payment: flagged, the note says how to refund, the order stays unmarked', ! $order->is_paid() && 1 === $private_notes( $order ) && '' === (string) $order->get_meta( '_p2flux_refundable' ) );
+$notes = count( $order->notes );
+P2Flux_WC_Payments::verify( $order, $a['intent'], tx( 54 ) );
+check( 'the same unexpected payment seen again adds no notes', count( $order->notes ) === $notes );
+
+$order  = new_order( 745 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+$order->set_status( 'cancelled' );
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 55 ), array( 'accounting' => array( 'payer' => '0xf66d', 'refundable' => false ) ) ) );
+P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 55 ) );
+check( 'a private payment for a cancelled order gets the refund-by-hand note', ! $order->is_paid() && 1 === $private_notes( $order ) );
 
 echo "\na settlement that does not match is never paid\n";
 $order  = new_order( 661 );

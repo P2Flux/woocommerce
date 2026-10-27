@@ -118,7 +118,11 @@ class P2Flux_WC_Admin {
 			echo '<p class="p2flux-box__warning">' . esc_html__( 'P2Flux answered about a billing period that belongs to another order. Review both orders before fulfilling.', 'p2flux-for-woocommerce' ) . '</p>';
 		}
 
-		self::render_refund( $order, $refund, $hash );
+		if ( 'no' === $order->get_meta( '_p2flux_refundable' ) ) {
+			echo '<p class="p2flux-box__warning">' . esc_html__( 'Paid privately (through a privacy service such as Hinkal): P2Flux cannot refund it. To refund, ask the customer for a wallet address and send it from your own wallet.', 'p2flux-for-woocommerce' ) . '</p>';
+		} else {
+			self::render_refund( $order, $refund, $hash );
+		}
 		echo '</div>';
 	}
 

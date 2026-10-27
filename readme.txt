@@ -67,7 +67,7 @@ Orders keep the environment they were created in, so switching to live later nev
 
 == External services ==
 
-This plugin sends data to two external services; a third is used only if you switch on private payments.
+This plugin sends data to two external services. A third (Hinkal) is involved only if you switch on private payments, and only through P2Flux's payment page, never from your store.
 
 **P2Flux** (https://api.p2flux.com, https://api-test.p2flux.com, and the hosted checkout at
 https://pay.p2flux.com / https://pay-test.p2flux.com)
