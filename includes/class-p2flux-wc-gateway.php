@@ -107,6 +107,13 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 				'default'     => 'yes',
 				'description' => __( 'Each payment made this way costs you an additional fixed 0.10 USDC on top of the 1% fee: that network fee comes out of the amount you receive. Customers can still choose to pay the network fee in ETH themselves. Subscriptions are not affected.', 'p2flux-for-woocommerce' ),
 			),
+			'private_payment' => array(
+				'title'       => __( 'Private payments', 'p2flux-for-woocommerce' ),
+				'type'        => 'checkbox',
+				'label'       => __( 'Also offer "Pay privately with Hinkal" (live network only)', 'p2flux-for-woocommerce' ),
+				'default'     => 'no',
+				'description' => __( 'Customers with a Hinkal private balance can pay without their own wallet appearing on chain. You receive the same amount and pay the same 1% fee; the customer pays Hinkal\'s small fee on top. Such a payment cannot be refunded automatically: refund it from your own wallet to an address the customer gives you. Offered on one-time payments when the customer pays the network fee in ETH, not on subscriptions or the test network.', 'p2flux-for-woocommerce' ),
+			),
 			'rate_mode'   => array(
 				'title'       => __( 'Exchange rate', 'p2flux-for-woocommerce' ),
 				'type'        => 'select',

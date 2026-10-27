@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — 2026-10-27
+
+- New setting `private_payment` ("Private payments", default off). When on and the environment is
+  live, a native intent is created with `private_payment: 'hinkal'`, so the hosted checkout also
+  offers "Pay privately with Hinkal". Sponsored (no-ETH) intents, subscriptions and the test network
+  never carry it (P2Flux refuses it there).
+- A verified settlement whose `accounting.refundable` is `false` (paid through a privacy service)
+  stores `_p2flux_refundable = no` and adds an order note on how to refund manually.
+
 ## 1.1.2 — 2026-10-22
 
 - `settle()` takes an order-keyed `P2Flux_WC_Lock` lease and re-reads the order inside it: two

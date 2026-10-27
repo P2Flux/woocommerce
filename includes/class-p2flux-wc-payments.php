@@ -151,7 +151,7 @@ class P2Flux_WC_Payments {
 		try {
 			try {
 				// A native create is exactly what 1.0.0 sent: the mode field only when sponsored.
-				$created = $client->createPayment( P2Flux_WC_Sponsorship::SPONSORED === $mode ? $terms + array( 'gas_payment_mode' => 'payment_token' ) : $terms );
+				$created = $client->createPayment( P2Flux_WC_Sponsorship::SPONSORED === $mode ? $terms + array( 'gas_payment_mode' => 'payment_token' ) : $terms + self::private_terms( $context ) );
 			} catch ( \P2FluxWC\Vendor\P2Flux\P2FluxException $e ) {
 				if ( P2Flux_WC_Sponsorship::SPONSORED !== $mode
 					|| ( 0 !== strpos( $e->status, 'PAYMENT_TOKEN_GAS' ) && 'AMOUNT_OUT_OF_BOUNDS' !== $e->status ) ) {
@@ -502,6 +502,12 @@ class P2Flux_WC_Payments {
 		}
 		$net = P2Flux_WC_Money::display( (int) $accounting['merchant_net_units'] );
 
+		// Paid through a privacy service (e.g. Hinkal): the on-chain payer is its contract, not the customer.
+		if ( isset( $accounting['refundable'] ) && false === $accounting['refundable'] ) {
+			$order->update_meta_data( '_p2flux_refundable', 'no' );
+			$order->add_order_note( __( 'P2Flux: paid privately (through a privacy service such as Hinkal). P2Flux cannot refund this payment automatically: to refund, ask the customer for a wallet address and send it from your own wallet.', 'p2flux-for-woocommerce' ) );
+		}
+
 		if ( $sponsored ) {
 			$fee = isset( $accounting['network_fee_units'] ) && ctype_digit( (string) $accounting['network_fee_units'] ) ? (int) $accounting['network_fee_units'] : 0;
 			$order->add_order_note(
@@ -522,6 +528,20 @@ class P2Flux_WC_Payments {
 				$net
 			)
 		);
+	}
+
+	/**
+	 * "Pay privately with Hinkal" on a native intent: only when the merchant switched it on, and only
+	 * on the live network (Hinkal is not on Base Sepolia, where P2Flux refuses the option).
+	 *
+	 * @param array $context units, recipient, environment, mode.
+	 * @return array<string,string>
+	 */
+	private static function private_terms( array $context ) {
+		$settings = get_option( 'woocommerce_p2flux_settings', array() );
+		$on       = is_array( $settings ) && isset( $settings['private_payment'] ) && 'yes' === $settings['private_payment'];
+
+		return $on && P2Flux_WC_Client::LIVE === $context['environment'] ? array( 'private_payment' => 'hinkal' ) : array();
 	}
 
 	/**

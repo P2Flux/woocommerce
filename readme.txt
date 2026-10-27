@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
 WC tested up to: 11.0
-Stable tag: 1.1.2
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -67,7 +67,7 @@ Orders keep the environment they were created in, so switching to live later nev
 
 == External services ==
 
-This plugin sends data to two external services.
+This plugin sends data to two external services; a third is used only if you switch on private payments.
 
 **P2Flux** (https://api.p2flux.com, https://api-test.p2flux.com, and the hosted checkout at
 https://pay.p2flux.com / https://pay-test.p2flux.com)
@@ -87,6 +87,15 @@ request itself; the response is cached for an hour. No order, customer or store 
 
 Terms of service: https://www.coinbase.com/legal/developer-platform/terms-of-service. Privacy policy:
 https://www.coinbase.com/legal/privacy.
+
+**Hinkal** (https://hinkal.io) - only if you switch on "Private payments"
+
+The plugin itself never contacts Hinkal: it only asks P2Flux to offer "Pay privately with Hinkal" on
+the hosted checkout. A customer who chooses it is taken to P2Flux's private payment page
+(https://private.pay.p2flux.com), which connects their wallet to Hinkal to pay from their Hinkal
+private balance. Your store sends Hinkal nothing.
+
+Privacy policy: https://hinkal.io/privacy-policy.
 
 == Privacy ==
 
@@ -271,6 +280,10 @@ working while new ones use the new key.
 9. A simple product turned into a P2Flux Native Subscription with one checkbox and an interval.
 
 == Changelog ==
+
+= 1.2.0 =
+* Private payments with Hinkal (optional, off by default): customers with a Hinkal private balance can pay a one-time order without their own wallet appearing on chain. You receive the same amount for the same 1% fee; the customer pays Hinkal's small fee on top. Live network only.
+* An order paid privately gets a note explaining that P2Flux cannot refund it automatically and how to refund it from your own wallet.
 
 = 1.1.2 =
 * One order is recorded once: when the payment page, the status check and the recovery job confirm the same order at the same moment, only one of them completes it (no duplicate emails or stock changes).

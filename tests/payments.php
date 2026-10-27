@@ -626,6 +626,45 @@ check( 'stores the gas mode', 'sponsored' === $order->get_meta( '_p2flux_gas_mod
 check( 'notes what the merchant received and the network fee', 1 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, '12.7601 USDC' ) && false !== strpos( $n, '0.004702 USDC' ); } ) ) );
 check( 'never stores the payer', false === strpos( serialize( array( $order->notes, $order ) ), $payer ) );
 
+echo "\nprivate payments with Hinkal: only when switched on, live, native\n";
+$live = array_merge( context(), array( 'environment' => 'mainnet' ) );
+foreach ( array(
+	'off'      => array( array( 'environment' => 'mainnet', 'sponsored' => 'no' ), $live, false, 701 ),
+	'on, live' => array( array( 'environment' => 'mainnet', 'sponsored' => 'no', 'private_payment' => 'yes' ), $live, true, 702 ),
+	'on, test' => array( array( 'environment' => 'test', 'sponsored' => 'no', 'private_payment' => 'yes' ), context(), false, 703 ),
+) as $label => $case ) {
+	update_option( 'woocommerce_p2flux_settings', $case[0] );
+	$GLOBALS['p2flux_test_transients'] = array();
+	respond_create();
+	p2flux_test_reset_calls();
+	P2Flux_WC_Payments::ensure_intent( new_order( $case[3] ), $case[1] );
+	check( "private_payment $label: " . ( $case[2] ? 'sent' : 'not sent' ), $case[2] === ( 'hinkal' === ( last_create()['private_payment'] ?? null ) ) );
+}
+update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'mainnet', 'sponsored' => 'yes', 'private_payment' => 'yes' ) );
+$GLOBALS['p2flux_test_transients'] = array();
+caps();
+respond_create();
+p2flux_test_reset_calls();
+P2Flux_WC_Payments::ensure_intent( new_order( 730 ), array_merge( $live, array( 'mode' => 'sponsored' ) ) );
+check( 'a sponsored intent never asks for private_payment', 'payment_token' === ( last_create()['gas_payment_mode'] ?? null ) && ! array_key_exists( 'private_payment', last_create() ) );
+update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'test' ) );
+
+$order  = new_order( 731 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+$accounting = array( 'payment_units' => '12990000', 'payment_fee_units' => '129900', 'network_fee_units' => '0', 'fixed_network_fee_units' => '0', 'merchant_net_units' => '12860100', 'buyer_total_units' => '12990000', 'payer' => '0xf66d101962e20cb49c4934f9fbb43eb7ef75f4cc', 'refundable' => false );
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 50 ), array( 'gas_payment_mode' => 'native', 'screening' => 'unknown', 'accounting' => $accounting ) ) );
+P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 50 ) );
+check( 'a private payment is paid', $order->is_paid() );
+check( 'it is marked not refundable, with a note saying how to refund', 'no' === $order->get_meta( '_p2flux_refundable' ) && 1 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'paid privately' ); } ) ) );
+
+$order  = new_order( 732 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+unset( $accounting['refundable'] );
+$accounting['payer'] = '0x' . str_repeat( 'b0', 20 );
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 51 ), array( 'gas_payment_mode' => 'native', 'accounting' => $accounting ) ) );
+P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 51 ) );
+check( 'a normal payment gets no private note', $order->is_paid() && '' === (string) $order->get_meta( '_p2flux_refundable' ) && 0 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'paid privately' ); } ) ) );
+
 echo "\na settlement that does not match is never paid\n";
 $order  = new_order( 661 );
 $intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
