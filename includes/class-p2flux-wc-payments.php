@@ -45,7 +45,7 @@ class P2Flux_WC_Payments {
 		}
 
 		$active = P2Flux_WC_Intents::active( $order );
-		if ( $active && self::describes( $active, $context ) ) {
+		if ( $active && self::describes( $order, $active, $context ) ) {
 			return $active;
 		}
 
@@ -87,7 +87,7 @@ class P2Flux_WC_Payments {
 	 */
 	private static function reusable( $order, array $context ) {
 		foreach ( array_reverse( P2Flux_WC_Intents::all( $order ) ) as $item ) {
-			if ( ! in_array( $item['status'], array( P2Flux_WC_Intents::ACTIVE, P2Flux_WC_Intents::REPLACED ), true ) || ! self::describes( $item, $context ) ) {
+			if ( ! in_array( $item['status'], array( P2Flux_WC_Intents::ACTIVE, P2Flux_WC_Intents::REPLACED ), true ) || ! self::describes( $order, $item, $context ) ) {
 				continue;
 			}
 			if ( P2Flux_WC_Intents::ACTIVE !== $item['status'] ) {
@@ -106,15 +106,17 @@ class P2Flux_WC_Payments {
 	/**
 	 * Does this intent still describe the order, and is it worth opening?
 	 *
+	 * @param WC_Order            $order   Order.
 	 * @param array<string,mixed> $item    Ledger record.
 	 * @param array               $context units, recipient, environment, mode.
 	 * @return bool
 	 */
-	private static function describes( array $item, array $context ) {
+	private static function describes( $order, array $item, array $context ) {
 		return (int) $item['units'] === (int) $context['units']
 			&& strtolower( $item['recipient'] ) === strtolower( $context['recipient'] )
 			&& $item['environment'] === $context['environment']
 			&& P2Flux_WC_Intents::mode( $item ) === $context['mode']
+			&& ! empty( $item['private'] ) === self::offers_private( $order, $context )
 			&& (int) $item['expires'] > time() + MINUTE_IN_SECONDS;
 	}
 
@@ -151,7 +153,7 @@ class P2Flux_WC_Payments {
 		try {
 			try {
 				// A native create is exactly what 1.0.0 sent: the mode field only when sponsored.
-				$created = $client->createPayment( P2Flux_WC_Sponsorship::SPONSORED === $mode ? $terms + array( 'gas_payment_mode' => 'payment_token' ) : $terms + self::private_terms( $context ) );
+				$created = $client->createPayment( P2Flux_WC_Sponsorship::SPONSORED === $mode ? $terms + array( 'gas_payment_mode' => 'payment_token' ) : $terms + self::private_terms( $order, $context ) );
 			} catch ( \P2FluxWC\Vendor\P2Flux\P2FluxException $e ) {
 				if ( P2Flux_WC_Sponsorship::SPONSORED !== $mode
 					|| ( 0 !== strpos( $e->status, 'PAYMENT_TOKEN_GAS' ) && 'AMOUNT_OUT_OF_BOUNDS' !== $e->status ) ) {
@@ -160,7 +162,7 @@ class P2Flux_WC_Payments {
 				P2Flux_WC_Logger::log( 'sponsored intent refused, minting a native one', array( 'order' => $order->get_id(), 'error' => $e->status ) );
 				P2Flux_WC_Sponsorship::mark_unavailable( $context['environment'] );
 				$mode    = P2Flux_WC_Sponsorship::NATIVE;
-				$created = $client->createPayment( $terms );
+				$created = $client->createPayment( $terms + self::private_terms( $order, array( 'mode' => $mode ) + $context ) );
 			}
 		} catch ( \Exception $e ) {
 			P2Flux_WC_Logger::error( 'could not create a payment intent', array( 'order' => $order->get_id(), 'error' => $e->getMessage() ) );
@@ -183,6 +185,7 @@ class P2Flux_WC_Payments {
 			'environment' => $context['environment'],
 			'expires'     => isset( $created['expires_at'] ) ? (int) $created['expires_at'] : time() + HOUR_IN_SECONDS,
 			'mode'        => $mode,
+			'private'     => isset( $created['private_payment'] ) && 'hinkal' === $created['private_payment'],
 		);
 
 		P2Flux_WC_Intents::add( $order, $intent );
@@ -448,6 +451,7 @@ class P2Flux_WC_Payments {
 					$explorer . '/tx/' . $hash
 				)
 			);
+			self::note_private( $order, $verdict );
 			$order->save();
 			P2Flux_WC_Logger::error( 'settlement did not match the order total', array( 'order' => $order->get_id() ) );
 
@@ -495,18 +499,13 @@ class P2Flux_WC_Payments {
 	private static function note_economics( $order, array $verdict ) {
 		$sponsored = isset( $verdict['gas_payment_mode'] ) && 'payment_token' === $verdict['gas_payment_mode'];
 		$order->update_meta_data( '_p2flux_gas_mode', $sponsored ? P2Flux_WC_Sponsorship::SPONSORED : P2Flux_WC_Sponsorship::NATIVE );
+		self::note_private( $order, $verdict );
 
 		$accounting = isset( $verdict['accounting'] ) && is_array( $verdict['accounting'] ) ? $verdict['accounting'] : array();
 		if ( ! isset( $accounting['merchant_net_units'] ) || ! ctype_digit( (string) $accounting['merchant_net_units'] ) ) {
 			return;
 		}
 		$net = P2Flux_WC_Money::display( (int) $accounting['merchant_net_units'] );
-
-		// Paid through a privacy service (e.g. Hinkal): the on-chain payer is its contract, not the customer.
-		if ( isset( $accounting['refundable'] ) && false === $accounting['refundable'] ) {
-			$order->update_meta_data( '_p2flux_refundable', 'no' );
-			$order->add_order_note( __( 'P2Flux: paid privately (through a privacy service such as Hinkal). P2Flux cannot refund this payment automatically: to refund, ask the customer for a wallet address and send it from your own wallet.', 'p2flux-for-woocommerce' ) );
-		}
 
 		if ( $sponsored ) {
 			$fee = isset( $accounting['network_fee_units'] ) && ctype_digit( (string) $accounting['network_fee_units'] ) ? (int) $accounting['network_fee_units'] : 0;
@@ -534,14 +533,48 @@ class P2Flux_WC_Payments {
 	 * "Pay privately with Hinkal" on a native intent: only when the merchant switched it on, and only
 	 * on the live network (Hinkal is not on Base Sepolia, where P2Flux refuses the option).
 	 *
-	 * @param array $context units, recipient, environment, mode.
+	 * Never on a subscription renewal paid by hand: the setting promises one-time orders only.
+	 *
+	 * @param WC_Order $order   Order.
+	 * @param array    $context units, recipient, environment, mode.
 	 * @return array<string,string>
 	 */
-	private static function private_terms( array $context ) {
-		$settings = get_option( 'woocommerce_p2flux_settings', array() );
-		$on       = is_array( $settings ) && isset( $settings['private_payment'] ) && 'yes' === $settings['private_payment'];
+	private static function private_terms( $order, array $context ) {
+		return self::offers_private( $order, $context ) ? array( 'private_payment' => 'hinkal' ) : array();
+	}
 
-		return $on && P2Flux_WC_Client::LIVE === $context['environment'] ? array( 'private_payment' => 'hinkal' ) : array();
+	/**
+	 * Would a native intent for this order offer "Pay privately with Hinkal"?
+	 *
+	 * @param WC_Order $order   Order.
+	 * @param array    $context units, recipient, environment, mode.
+	 * @return bool
+	 */
+	private static function offers_private( $order, array $context ) {
+		$settings = get_option( 'woocommerce_p2flux_settings', array() );
+
+		return is_array( $settings ) && isset( $settings['private_payment'] ) && 'yes' === $settings['private_payment']
+			&& P2Flux_WC_Client::LIVE === $context['environment']
+			&& ( ! isset( $context['mode'] ) || P2Flux_WC_Sponsorship::SPONSORED !== $context['mode'] )
+			&& null === P2Flux_WC_Subscriptions::for_order( $order );
+	}
+
+	/**
+	 * Paid through a privacy service (e.g. Hinkal): the on-chain payer is its contract, not the
+	 * customer, so P2Flux cannot refund it. Marks the order and tells the merchant how to refund.
+	 *
+	 * @param WC_Order $order   Order.
+	 * @param array    $verdict Verification or recovery response.
+	 * @return bool Whether it was such a payment.
+	 */
+	private static function note_private( $order, array $verdict ) {
+		if ( ! isset( $verdict['accounting']['refundable'] ) || false !== $verdict['accounting']['refundable'] ) {
+			return false;
+		}
+		$order->update_meta_data( '_p2flux_refundable', 'no' );
+		$order->add_order_note( __( 'P2Flux: paid privately (through a privacy service such as Hinkal). P2Flux cannot refund this payment automatically: to refund, ask the customer for a wallet address and send it from your own wallet.', 'p2flux-for-woocommerce' ) );
+
+		return true;
 	}
 
 	/**
@@ -595,6 +628,7 @@ class P2Flux_WC_Payments {
 				$explorer . '/tx/' . $hash
 			)
 		);
+		self::note_private( $order, $verdict );
 		$order->save();
 		P2Flux_WC_Logger::error( 'a second payment arrived for an already-paid order', array( 'order' => $order->get_id() ) );
 	}

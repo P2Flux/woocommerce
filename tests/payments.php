@@ -665,6 +665,69 @@ p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 51 ), array( '
 P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 51 ) );
 check( 'a normal payment gets no private note', $order->is_paid() && '' === (string) $order->get_meta( '_p2flux_refundable' ) && 0 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'paid privately' ); } ) ) );
 
+echo "\nprivate payments: renewals, reuse after a toggle, fallback, odd settlements\n";
+function respond_create_echo() {
+	p2flux_test_respond(
+		'/v1/payments',
+		static function ( $payload ) {
+			if ( isset( $payload['gas_payment_mode'] ) ) {
+				return array( 503, array( 'error' => 'PAYMENT_TOKEN_GAS_UNAVAILABLE' ) );
+			}
+			return array( 200, array( 'intent' => 'p2f1.k1.echo-' . ( ++$GLOBALS['minted'] ) . '.mac', 'expires_at' => time() + 3600 ) + ( isset( $payload['private_payment'] ) ? array( 'private_payment' => $payload['private_payment'] ) : array() ) );
+		}
+	);
+}
+function private_setting( $on, $sponsored = 'no' ) {
+	update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'mainnet', 'sponsored' => $sponsored, 'private_payment' => $on ? 'yes' : 'no' ) );
+	$GLOBALS['p2flux_test_transients'] = array();
+}
+$live_native = array_merge( context(), array( 'environment' => 'mainnet', 'mode' => 'native' ) );
+
+private_setting( true );
+respond_create_echo();
+$order        = new_order( 740 );
+$subscription = new P2Flux_Test_Subscription( 9740 );
+$subscription->related = array( 740 );
+p2flux_test_register_subscription( $subscription );
+p2flux_test_reset_calls();
+P2Flux_WC_Payments::ensure_intent( $order, $live_native );
+check( 'a renewal paid by hand never asks for private_payment', ! array_key_exists( 'private_payment', last_create() ) );
+$GLOBALS['p2flux_test_subscriptions'] = array();
+
+$order = new_order( 741 );
+$first = P2Flux_WC_Payments::ensure_intent( $order, $live_native );
+check( 'the ledger records a private intent', ! empty( $first['private'] ) );
+check( 'the same setting reuses it', $first['intent'] === P2Flux_WC_Payments::ensure_intent( $order, $live_native )['intent'] );
+private_setting( false );
+$ledger = P2Flux_WC_Intents::all( $order );
+$ledger[0]['created'] = time() - 600; // past the mint cooldown
+$order->update_meta_data( P2Flux_WC_Intents::LEDGER_META, wp_json_encode( array( 'v' => 1, 'items' => $ledger ) ) );
+p2flux_test_reset_calls();
+$second = P2Flux_WC_Payments::ensure_intent( $order, $live_native );
+check( 'switched off: the private intent is not reused, a plain one is minted', $second['intent'] !== $first['intent'] && empty( $second['private'] ) && ! array_key_exists( 'private_payment', last_create() ) );
+
+private_setting( true, 'yes' );
+caps();
+respond_create_echo();
+p2flux_test_reset_calls();
+$fallback = P2Flux_WC_Payments::ensure_intent( new_order( 742 ), array_merge( context(), array( 'environment' => 'mainnet' ) ) );
+check( 'a sponsored create refused falls back to native with private_payment', 'native' === $fallback['mode'] && 'hinkal' === ( last_create()['private_payment'] ?? null ) );
+
+update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'test' ) );
+respond_create();
+$order  = new_order( 743 );
+$intent = P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 53 ), array( 'gas_payment_mode' => 'native', 'accounting' => array( 'payer' => '0xf66d', 'refundable' => false ) ) ) );
+P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 53 ) );
+check( 'without net units it is still marked not refundable', 'no' === $order->get_meta( '_p2flux_refundable' ) );
+
+$order = new_order( 744 );
+$a     = P2Flux_WC_Payments::ensure_intent( $order, context() );
+$order->update_meta_data( '_p2flux_units', PRICE + 1000000 );
+p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 54 ), array( 'accounting' => array( 'payer' => '0xf66d', 'refundable' => false ) ) ) );
+P2Flux_WC_Payments::verify( $order, $a['intent'], tx( 54 ) );
+check( 'an unexpected private payment: flagged, and the refund note says how', ! $order->is_paid() && 'no' === $order->get_meta( '_p2flux_refundable' ) );
+
 echo "\na settlement that does not match is never paid\n";
 $order  = new_order( 661 );
 $intent = P2Flux_WC_Payments::ensure_intent( $order, context() );

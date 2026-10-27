@@ -95,7 +95,7 @@ the hosted checkout. A customer who chooses it is taken to P2Flux's private paym
 (https://private.pay.p2flux.com), which connects their wallet to Hinkal to pay from their Hinkal
 private balance. Your store sends Hinkal nothing.
 
-Privacy policy: https://hinkal.io/privacy-policy.
+Terms of service: https://hinkal.io/tos. Privacy policy: https://hinkal.io/privacy-policy.
 
 == Privacy ==
 
