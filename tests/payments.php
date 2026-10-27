@@ -655,6 +655,7 @@ $accounting = array( 'payment_units' => '12990000', 'payment_fee_units' => '1299
 p2flux_test_respond( '/v1/payments/verify', array_merge( verdict( 50 ), array( 'gas_payment_mode' => 'native', 'screening' => 'unknown', 'accounting' => $accounting ) ) );
 P2Flux_WC_Payments::verify( $order, $intent['intent'], tx( 50 ) );
 check( 'a private payment is paid', $order->is_paid() );
+check( 'its note does not say the customer paid gas in ETH', 0 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'in ETH' ); } ) ) && 1 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'you received 12.8601 USDC' ); } ) ) );
 check( 'it is marked not refundable, with a note saying how to refund', 'no' === $order->get_meta( '_p2flux_refundable' ) && 1 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'paid privately' ); } ) ) );
 
 $order  = new_order( 732 );

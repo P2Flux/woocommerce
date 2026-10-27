@@ -526,12 +526,20 @@ class P2Flux_WC_Payments {
 			return;
 		}
 
+		// A private payment's network fee is paid by the privacy service, not by the customer in ETH.
+		$private = isset( $accounting['refundable'] ) && false === $accounting['refundable'];
 		$order->add_order_note(
-			sprintf(
-				/* translators: 1: USDC the merchant received. */
-				__( 'P2Flux: the customer paid the network fee in ETH. You received %1$s USDC.', 'p2flux-for-woocommerce' ),
-				$net
-			)
+			$private
+				? sprintf(
+					/* translators: 1: USDC the merchant received. */
+					__( 'P2Flux: you received %1$s USDC.', 'p2flux-for-woocommerce' ),
+					$net
+				)
+				: sprintf(
+					/* translators: 1: USDC the merchant received. */
+					__( 'P2Flux: the customer paid the network fee in ETH. You received %1$s USDC.', 'p2flux-for-woocommerce' ),
+					$net
+				)
 		);
 	}
 
