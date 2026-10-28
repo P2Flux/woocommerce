@@ -30,6 +30,8 @@ final class ChargeResult
         public readonly ?string $nextPeriodAt,
         /** @var array<string, mixed> The raw API body, for logs and forward compatibility. */
         public readonly array $raw,
+        /** The charge's own merchant_ref (charge($ref, $merchantRef)), else the subscription's, when the API echoes one. */
+        public readonly ?string $merchantRef = null,
     ) {
     }
 
@@ -54,6 +56,7 @@ final class ChargeResult
             periodIndex: isset($body['period_index']) ? (int) $body['period_index'] : null,
             nextPeriodAt: isset($body['next_period_at']) ? (string) $body['next_period_at'] : null,
             raw: $body,
+            merchantRef: is_string($body['merchant_ref'] ?? null) ? $body['merchant_ref'] : null,
         );
     }
 }

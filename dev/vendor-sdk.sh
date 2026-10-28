@@ -27,7 +27,7 @@ dest="$(cd "$(dirname "$0")/.." && pwd)/includes/vendor/p2flux"
 commit="$(git -C "$src" rev-parse --verify -q "refs/tags/$tag^{commit}")" || { echo "no tag $tag in $src" >&2; exit 1; }
 
 mkdir -p "$dest"
-for file in P2FluxException.php ChargeResult.php P2FluxClient.php; do
+for file in P2FluxException.php ChargeResult.php P2FluxClient.php Keccak.php; do
   git -C "$src" show "$tag:src/$file" | sed 's/^namespace P2Flux;$/namespace P2FluxWC\\Vendor\\P2Flux;/' > "$dest/$file"
 done
 git -C "$src" show "$tag:LICENSE" > "$dest/LICENSE"

@@ -1,7 +1,12 @@
 # Vendored: p2flux/sdk-php
 
-Source: https://github.com/P2Flux/sdk-php at `v0.7.3` (commit `80d844645d108ecab1f5f41da389fa33e75b0ed8`), copied by `dev/vendor-sdk.sh`
-from the tag itself, not from a working tree.
+Source: https://github.com/P2Flux/sdk-php branch `feat/finance-ready`, 0.15.0 UNRELEASED (commit
+`c032579ad8ef7c8dc92a793b2c89bb1b6c5ad0ec`), copied with the same two edits as `dev/vendor-sdk.sh` but
+from that commit, because 0.15.0 is not tagged yet. Before a release, re-run `dev/vendor-sdk.sh` with the
+`v0.15.0` tag; `dev/release-check.sh` fails until then.
+
+`Keccak.php` is copied too (the client loads it for `checkMerchantRef()`); `Statement.php` and
+`Paywall.php` are not used by this plugin.
 
 Two edits, both mechanical:
 
