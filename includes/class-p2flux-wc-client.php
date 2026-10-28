@@ -180,16 +180,28 @@ class P2Flux_WC_Client {
 	 * refused that way is sent once more without it: a 400 created nothing, and a request that was
 	 * wrong for another reason is refused again. The newer API accepts it the first time.
 	 *
+	 * When the resend goes through, that API (per host, so test and live apart) is remembered for an
+	 * hour as one without merchant_ref, and it is left out meanwhile - one request per payment, not two.
+	 *
 	 * @param callable $send Transport.
 	 * @return callable
 	 */
 	private static function merchant_ref_fallback( callable $send ) {
 		return static function ( $url, $payload, $timeout ) use ( $send ) {
+			$memo    = 'p2flux_wc_no_mr_' . md5( (string) wp_parse_url( (string) $url, PHP_URL_HOST ) );
+			$has_ref = is_array( $payload ) && isset( $payload['merchant_ref'] );
+			if ( $has_ref && get_transient( $memo ) ) {
+				unset( $payload['merchant_ref'] );
+				$has_ref = false;
+			}
 			$answer = $send( $url, $payload, $timeout );
-			if ( is_array( $payload ) && isset( $payload['merchant_ref'] ) && 400 === (int) $answer[0]
+			if ( $has_ref && 400 === (int) $answer[0]
 				&& isset( $answer[1]['error'] ) && 'INVALID_REQUEST' === $answer[1]['error'] ) {
 				unset( $payload['merchant_ref'] );
 				$answer = $send( $url, $payload, $timeout );
+				if ( 400 !== (int) $answer[0] ) {
+					set_transient( $memo, 1, HOUR_IN_SECONDS );
+				}
 			}
 
 			return $answer;

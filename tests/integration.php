@@ -141,6 +141,17 @@ check( 'an old API: the renewal is still collected', $renewal->is_paid() && 'cha
 check( 'by one retry without merchant_ref', 2 === count( $sent ) && '1015' === ( $sent[0]['payload']['merchant_ref'] ?? null ) && ! isset( $sent[1]['payload']['merchant_ref'] ) );
 check( 'and the note claims no merchant reference', array() === array_filter( $renewal->notes, static function ( $n ) { return false !== strpos( $n, 'Merchant reference' ); } ) );
 
+list( $subscription, $renewal ) = scenario( 17, 'auth-mr3' );
+p2flux_test_reset_calls();
+P2Flux_WC_Charger::collect( $subscription->get_id(), $renewal->get_id() );
+$sent = p2flux_test_calls( '/v1/charges' );
+check( 'that environment is remembered for an hour: the next charge goes once, without merchant_ref', $renewal->is_paid() && 1 === count( $sent ) && ! isset( $sent[0]['payload']['merchant_ref'] ) );
+$memo = array_filter( $GLOBALS['p2flux_test_transients'] ?? array(), static function ( $k ) { return 0 === strpos( $k, 'p2flux_wc_no_mr_' ); }, ARRAY_FILTER_USE_KEY );
+check( 'as a one-hour transient per API host', 1 === count( $memo ) && HOUR_IN_SECONDS === reset( $memo )['ttl'] );
+foreach ( array_keys( $memo ) as $k ) {
+	delete_transient( $k ); // the hour is over: the API was upgraded
+}
+
 list( $subscription, $renewal ) = scenario( 16, 'auth-mr2' );
 p2flux_test_reset_calls();
 p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( 'cf', 32 ), 'period_index' => 1, 'merchant_ref' => '1016' ) );

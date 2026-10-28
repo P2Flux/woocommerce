@@ -222,6 +222,11 @@ check( 'by sending it once more without merchant_ref', 2 === count( $sent ) && i
 check( 'and nothing else changed in the retry', array_diff_key( $sent[0]['payload'], array( 'merchant_ref' => 1 ) ) === $sent[1]['payload'] );
 
 $order = new_order( 523 );
+foreach ( array_keys( $GLOBALS['p2flux_test_transients'] ?? array() ) as $k ) {
+	if ( 0 === strpos( $k, 'p2flux_wc_no_mr_' ) ) {
+		delete_transient( $k ); // the hour without merchant_ref is over
+	}
+}
 p2flux_test_respond( '/v1/payments', array( 'error' => 'INVALID_REQUEST' ), 400 );
 p2flux_test_reset_calls();
 $bad = P2Flux_WC_Payments::ensure_intent( $order, context() );
