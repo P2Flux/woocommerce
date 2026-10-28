@@ -150,6 +150,12 @@ class P2Flux_WC_Payments {
 			'recipient' => $context['recipient'],
 			'amount'    => P2Flux_WC_Money::format( (int) $context['units'] ),
 		);
+		// The order number, so the merchant's books can match the payment (dropped by the transport
+		// for an API that does not know the field yet).
+		$merchant_ref = P2Flux_WC_Client::merchant_ref( $order );
+		if ( null !== $merchant_ref ) {
+			$terms['merchant_ref'] = $merchant_ref;
+		}
 
 		try {
 			try {
@@ -482,7 +488,7 @@ class P2Flux_WC_Payments {
 				/* translators: 1: explorer URL. */
 				__( 'P2Flux payment verified on chain. Transaction: %s', 'p2flux-for-woocommerce' ),
 				$explorer . '/tx/' . $hash
-			)
+			) . P2Flux_WC_Client::merchant_ref_note( isset( $verdict['merchant_ref'] ) ? $verdict['merchant_ref'] : null )
 		);
 		self::note_economics( $order, $verdict );
 		$order->payment_complete( $hash );

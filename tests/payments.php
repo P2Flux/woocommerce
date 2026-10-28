@@ -185,6 +185,59 @@ check( 'the shopper is told the payment cannot be processed', is_wp_error( $refu
 check( 'and that nothing was submitted', is_wp_error( $refused ) && false !== strpos( $refused->get_error_message(), 'No transaction was submitted' ) );
 check( 'no intent is stored', 0 === count( P2Flux_WC_Intents::all( $order ) ) );
 
+echo "\nmerchant_ref: the order number travels with the payment\n";
+$order = new_order( 520 );
+respond_create();
+p2flux_test_reset_calls();
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+$sent = p2flux_test_calls( '/v1/payments' );
+check( 'the create carries merchant_ref = order number', 1 === count( $sent ) && '520' === ( $sent[0]['payload']['merchant_ref'] ?? null ) );
+
+$order         = new_order( 521 );
+$order->number = 'INV 2026/521'; // a space: not accepted by P2Flux
+respond_create();
+p2flux_test_reset_calls();
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+$sent = p2flux_test_calls( '/v1/payments' );
+check( 'an order number P2Flux would refuse is left out, not altered', 1 === count( $sent ) && ! array_key_exists( 'merchant_ref', $sent[0]['payload'] ) );
+check( 'the helper accepts a sequential-number style ref', 'WC-2026/00521#a' === P2Flux_WC_Client::merchant_ref( (function () { $o = new P2Flux_Test_Order( 1 ); $o->number = ' WC-2026/00521#a '; return $o; })() ) );
+check( 'and refuses one longer than 64', null === P2Flux_WC_Client::merchant_ref( (function () { $o = new P2Flux_Test_Order( 1 ); $o->number = str_repeat( '9', 65 ); return $o; })() ) );
+
+echo "\nmerchant_ref against an API that does not know it yet\n";
+$order = new_order( 522 );
+p2flux_test_respond(
+	'/v1/payments',
+	static function ( $payload ) {
+		return isset( $payload['merchant_ref'] )
+			? array( 400, array( 'error' => 'INVALID_REQUEST', 'action' => 'FIX_REQUEST' ) )
+			: array( 200, array( 'intent' => 'p2f1.k1.intent-old.mac', 'reference' => '0x' . str_repeat( 'cd', 32 ), 'amount' => '12.99', 'expires_at' => time() + 3600 ) );
+	}
+);
+p2flux_test_reset_calls();
+$old = P2Flux_WC_Payments::ensure_intent( $order, context() );
+$sent = p2flux_test_calls( '/v1/payments' );
+check( 'the payment is still created', is_array( $old ) && 'p2f1.k1.intent-old.mac' === $old['intent'] );
+check( 'by sending it once more without merchant_ref', 2 === count( $sent ) && isset( $sent[0]['payload']['merchant_ref'] ) && ! isset( $sent[1]['payload']['merchant_ref'] ) );
+check( 'and nothing else changed in the retry', array_diff_key( $sent[0]['payload'], array( 'merchant_ref' => 1 ) ) === $sent[1]['payload'] );
+
+$order = new_order( 523 );
+p2flux_test_respond( '/v1/payments', array( 'error' => 'INVALID_REQUEST' ), 400 );
+p2flux_test_reset_calls();
+$bad = P2Flux_WC_Payments::ensure_intent( $order, context() );
+check( 'a request refused for another reason fails after the one retry', is_wp_error( $bad ) && 2 === count( p2flux_test_calls( '/v1/payments' ) ) );
+
+$order = new_order( 524 );
+p2flux_test_respond( '/v1/payments', static function () { throw new \P2FluxWC\Vendor\P2Flux\P2FluxException( 'NETWORK_ERROR', 'RETRY_LATER' ); } );
+p2flux_test_reset_calls();
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+check( 'an unreachable API is not retried', 1 === count( p2flux_test_calls( '/v1/payments' ) ) );
+
+$order = new_order( 525 );
+p2flux_test_respond( '/v1/payments', array( 'error' => 'RATE_LIMITED' ), 429 );
+p2flux_test_reset_calls();
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+check( 'nor is any other refusal', 1 === count( p2flux_test_calls( '/v1/payments' ) ) );
+
 echo "\nminting is serialised by the order's intent lock\n";
 $order = new_order( 502 );
 respond_create();
@@ -298,8 +351,9 @@ P2Flux_WC_Payments::settle( $order, $b['intent'], verdict( 10 ) );
 check( 'a second recorder for the same order steps aside while the first holds the lock', ! $order->is_paid() );
 P2Flux_WC_Lock::release( 'settle-' . $order->get_id(), $busy );
 
-P2Flux_WC_Payments::settle( $order, $b['intent'], verdict( 10 ) );
+P2Flux_WC_Payments::settle( $order, $b['intent'], verdict( 10 ) + array( 'merchant_ref' => '507' ) );
 check( 'the first settlement pays the order', $order->is_paid() && tx( 10 ) === $order->completed_with );
+check( 'and its note names the merchant_ref P2Flux recorded', 1 === count( array_filter( $order->notes, static function ( $n ) { return false !== strpos( $n, 'verified on chain' ) && false !== strpos( $n, 'Merchant reference: 507.' ); } ) ) );
 $again = P2Flux_WC_Lock::acquire( 'settle-' . $order->get_id() );
 check( 'and the settle lock is released afterwards', false !== $again );
 P2Flux_WC_Lock::release( 'settle-' . $order->get_id(), $again );
@@ -454,14 +508,14 @@ foreach ( $variants as $label => $arrange ) {
 		'native' === $intent['mode'] && ! array_key_exists( 'gas_payment_mode', last_create() ) && array() === cached_caps()['value'] && 300 === cached_caps()['ttl'] );
 }
 
-echo "\nsponsorship switched off: exactly the 1.0.0 request\n";
+echo "\nsponsorship switched off: the 1.0.0 request plus merchant_ref\n";
 sponsorship( false );
 caps();
 respond_create();
 p2flux_test_reset_calls();
 $intent = P2Flux_WC_Payments::ensure_intent( new_order( 620 ), context() );
 check( 'no capabilities call', 0 === count( p2flux_test_calls( '/v1/capabilities' ) ) );
-check( 'the create payload is recipient and amount only', array( 'recipient', 'amount' ) === array_keys( last_create() ) && 'native' === $intent['mode'] );
+check( 'the create payload is recipient, amount and the order number only', array( 'recipient', 'amount', 'merchant_ref' ) === array_keys( last_create() ) && 'native' === $intent['mode'] );
 update_option( 'woocommerce_p2flux_settings', array( 'environment' => 'test' ) );
 check( 'a settings array without the key (an upgraded 1.0.0 install) is off', ! P2Flux_WC_Sponsorship::enabled() );
 

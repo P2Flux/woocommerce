@@ -204,7 +204,7 @@ class P2Flux_WC_Charger {
 		P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::CHARGING, array( 'order_id' => $order_id ) );
 
 		$client = P2Flux_WC_Client::for_environment( isset( $authorization['environment'] ) ? $authorization['environment'] : P2Flux_WC_Client::current_environment() );
-		$result = $client->charge( $capability );
+		$result = $client->charge( $capability, P2Flux_WC_Client::merchant_ref( $order ) );
 		unset( $capability );
 
 		return self::reconcile( $subscription_id, $order_id, $authorization, $period, $result, $token );
@@ -349,7 +349,7 @@ class P2Flux_WC_Charger {
 		 */
 		if ( $proven ) {
 			P2Flux_WC_Periods::set_state( $authorization['id'], $period, P2Flux_WC_Periods::SETTLED, array( 'tx_hash' => $hash ) );
-			self::mark_paid( $order, $authorization, $period, $hash );
+			self::mark_paid( $order, $authorization, $period, $hash, isset( $result->merchantRef ) ? $result->merchantRef : null );
 
 			if ( $lifecycle ) {
 				$order->add_order_note( __( 'P2Flux: this charge was already in flight when the subscription was cancelled or suspended. The payment stands; no further periods will be collected.', 'p2flux-for-woocommerce' ) );
@@ -471,9 +471,10 @@ class P2Flux_WC_Charger {
 	 * @param array    $authorization Authorization record.
 	 * @param int      $period        Period index.
 	 * @param string   $hash          Settlement transaction.
+	 * @param mixed    $merchant_ref  merchant_ref the API recorded with the charge, if any.
 	 * @return void
 	 */
-	public static function mark_paid( $order, array $authorization, $period, $hash ) {
+	public static function mark_paid( $order, array $authorization, $period, $hash, $merchant_ref = null ) {
 		$order->update_meta_data( '_p2flux_auth_id', $authorization['id'] );
 		$order->update_meta_data( '_p2flux_period_index', (int) $period );
 		$order->update_meta_data( '_p2flux_tx_hash', $hash );
@@ -486,7 +487,7 @@ class P2Flux_WC_Charger {
 				/* translators: 1: block explorer transaction URL. */
 				__( 'P2Flux collected this billing period. Transaction: %s', 'p2flux-for-woocommerce' ),
 				$explorer . '/tx/' . $hash
-			)
+			) . P2Flux_WC_Client::merchant_ref_note( $merchant_ref )
 		);
 
 		$order->payment_complete( $hash );

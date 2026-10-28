@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 — unreleased
+
+- `merchant_ref` = the order number (`get_order_number()`, trimmed; left out unless it matches
+  `^[A-Za-z0-9._:/#-]{1,64}$`) on every one-time `createPayment()` and on every renewal
+  `charge($capability, $merchantRef)` (the renewal order's own number). The "verified" / "collected"
+  order notes append "Merchant reference: X." when the API's answer carries one.
+- Compatibility: an API without merchant_ref refuses the field as `400 INVALID_REQUEST` (it names no
+  field, and capabilities have no flag), so the transport resends a request that carried
+  `merchant_ref` once without it on exactly that answer. A 400 creates nothing; nothing else is
+  retried.
+- Vendored SDK: sdk-php 0.15.0 (adds `Keccak.php`). This plugin has no webhook receiver (it verifies
+  in the browser flow and the recovery jobs), so signed webhooks do not apply to it.
+
 ## 1.2.0 — 2026-10-27
 
 - New setting `private_payment` ("Private payments", default off). When on and the environment is

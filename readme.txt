@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
 WC tested up to: 11.0
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -74,9 +74,10 @@ https://pay.p2flux.com / https://pay-test.p2flux.com)
 
 Used to create payment instructions, to verify payments against the Base blockchain, and to collect
 subscription renewals. Sent: your payout wallet address, the amount in USDC, the billing period for
-a subscription, and transaction hashes for verification. Your customers' browsers open the hosted
-checkout window, which sees only the amount, the recipient and the network - never the product, the
-customer or the order.
+a subscription, transaction hashes for verification, and the order number (as `merchant_ref`, so a
+payment can be matched to its order in your books; only a salted hash of it is written to the
+blockchain). Your customers' browsers open the hosted checkout window, which sees only the amount,
+the recipient, the network and the order number - never the product or the customer.
 
 Terms of service: https://p2flux.com/terms.html. Privacy policy: https://p2flux.com/privacy.html.
 
@@ -280,6 +281,10 @@ working while new ones use the new key.
 9. A simple product turned into a P2Flux Native Subscription with one checkbox and an interval.
 
 == Changelog ==
+
+= 1.3.0 =
+* Each payment and each subscription renewal carries its order number to P2Flux (`merchant_ref`), so payments can be matched to orders in your books and statements. The order note of a verified payment names it. An order number with characters P2Flux does not accept (such as spaces) is left out.
+* Works with the current P2Flux API too: if P2Flux does not accept the order number yet, the payment is created without it.
 
 = 1.2.0 =
 * Private payments with Hinkal (optional, off by default): customers with a Hinkal private balance can pay a one-time order without their own wallet appearing on chain. You receive the same amount for the same 1% fee; the customer pays Hinkal's small fee on top. Live network only.

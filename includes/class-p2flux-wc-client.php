@@ -140,10 +140,68 @@ class P2Flux_WC_Client {
 		 * @param callable|null $transport Replacement transport.
 		 */
 		$override = apply_filters( 'p2flux_wc_transport', null );
-		if ( is_callable( $override ) ) {
-			return $override;
-		}
 
+		return self::merchant_ref_fallback( is_callable( $override ) ? $override : self::wp_transport() );
+	}
+
+	/**
+	 * What P2Flux accepts as a merchant_ref. A value that does not match is left out, never altered.
+	 */
+	const MERCHANT_REF = '~^[A-Za-z0-9._:/#-]{1,64}$~';
+
+	/**
+	 * The order number as P2Flux's merchant_ref, or null when it cannot be sent as is.
+	 *
+	 * @param WC_Order $order Order (a renewal order for a renewal charge).
+	 * @return string|null
+	 */
+	public static function merchant_ref( $order ) {
+		$number = trim( (string) $order->get_order_number() );
+
+		return 1 === preg_match( self::MERCHANT_REF, $number ) ? $number : null;
+	}
+
+	/**
+	 * " Merchant reference: X." when the API echoed a valid one, else ''. For order notes.
+	 *
+	 * @param mixed $ref merchant_ref from a verified answer.
+	 * @return string
+	 */
+	public static function merchant_ref_note( $ref ) {
+		return is_string( $ref ) && 1 === preg_match( self::MERCHANT_REF, $ref )
+			/* translators: %s: the order number P2Flux recorded with the payment. */
+			? ' ' . sprintf( __( 'Merchant reference: %s.', 'p2flux-for-woocommerce' ), $ref )
+			: '';
+	}
+
+	/**
+	 * An API older than merchant_ref refuses the unknown field (400 INVALID_REQUEST, without naming
+	 * it) and exposes no flag that says it is supported. So a request carrying merchant_ref that is
+	 * refused that way is sent once more without it: a 400 created nothing, and a request that was
+	 * wrong for another reason is refused again. The newer API accepts it the first time.
+	 *
+	 * @param callable $send Transport.
+	 * @return callable
+	 */
+	private static function merchant_ref_fallback( callable $send ) {
+		return static function ( $url, $payload, $timeout ) use ( $send ) {
+			$answer = $send( $url, $payload, $timeout );
+			if ( is_array( $payload ) && isset( $payload['merchant_ref'] ) && 400 === (int) $answer[0]
+				&& isset( $answer[1]['error'] ) && 'INVALID_REQUEST' === $answer[1]['error'] ) {
+				unset( $payload['merchant_ref'] );
+				$answer = $send( $url, $payload, $timeout );
+			}
+
+			return $answer;
+		};
+	}
+
+	/**
+	 * wp_remote_post as an SDK transport.
+	 *
+	 * @return callable
+	 */
+	private static function wp_transport() {
 		return static function ( $url, $payload, $timeout ) {
 			$response = wp_remote_post(
 				$url,

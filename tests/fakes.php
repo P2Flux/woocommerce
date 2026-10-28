@@ -239,6 +239,14 @@ class P2Flux_Test_Order extends P2Flux_Test_Object {
 	/** @var string */
 	public $completed_with = '';
 
+	/** @var string|null Order number when it differs from the id (sequential-number plugins). */
+	public $number = null;
+
+	/** @return string */
+	public function get_order_number() {
+		return null === $this->number ? (string) $this->get_id() : $this->number;
+	}
+
 	/** @return string */
 	public function get_total() {
 		return $this->total;

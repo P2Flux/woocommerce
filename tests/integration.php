@@ -122,6 +122,30 @@ $outcome = P2Flux_WC_Charger::collect( $subscription->get_id(), $renewal->get_id
 check( 'a charge with a transaction pays the renewal', $renewal->is_paid() && 'charged' === $outcome['status'] );
 check( 'and records the settlement on the order', str_starts_with( (string) $renewal->get_meta( '_p2flux_tx_hash' ), '0xcdcd' ) );
 check( 'exactly one charge request was sent', 1 === count( p2flux_test_calls( '/v1/charges' ) ) );
+check( 'the charge carries the renewal order number as merchant_ref', (string) $renewal->get_id() === ( p2flux_test_calls( '/v1/charges' )[0]['payload']['merchant_ref'] ?? null ) );
+
+echo "\nmerchant_ref per renewal, also against an API that does not know it yet\n";
+list( $subscription, $renewal ) = scenario( 15, 'auth-mr' );
+p2flux_test_reset_calls();
+p2flux_test_respond(
+	'/v1/charges',
+	static function ( $payload ) {
+		return isset( $payload['merchant_ref'] )
+			? array( 400, array( 'error' => 'INVALID_REQUEST', 'action' => 'FIX_REQUEST' ) )
+			: array( 200, array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( 'ce', 32 ), 'period_index' => 1 ) );
+	}
+);
+$outcome = P2Flux_WC_Charger::collect( $subscription->get_id(), $renewal->get_id() );
+$sent    = p2flux_test_calls( '/v1/charges' );
+check( 'an old API: the renewal is still collected', $renewal->is_paid() && 'charged' === $outcome['status'] );
+check( 'by one retry without merchant_ref', 2 === count( $sent ) && '1015' === ( $sent[0]['payload']['merchant_ref'] ?? null ) && ! isset( $sent[1]['payload']['merchant_ref'] ) );
+check( 'and the note claims no merchant reference', array() === array_filter( $renewal->notes, static function ( $n ) { return false !== strpos( $n, 'Merchant reference' ); } ) );
+
+list( $subscription, $renewal ) = scenario( 16, 'auth-mr2' );
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/charges', array( 'status' => 'CHARGED', 'ok' => true, 'action' => 'SUCCESS', 'tx_hash' => '0x' . str_repeat( 'cf', 32 ), 'period_index' => 1, 'merchant_ref' => '1016' ) );
+P2Flux_WC_Charger::collect( $subscription->get_id(), $renewal->get_id() );
+check( 'a new API: one request, and the note names the merchant_ref', 1 === count( p2flux_test_calls( '/v1/charges' ) ) && 1 === count( array_filter( $renewal->notes, static function ( $n ) { return false !== strpos( $n, 'collected this billing period' ) && false !== strpos( $n, 'Merchant reference: 1016.' ); } ) ) );
 
 echo "\none blockchain payment cannot pay two orders\n";
 
