@@ -32,6 +32,8 @@ final class ChargeResult
         public readonly array $raw,
         /** The charge's own merchant_ref (charge($ref, $merchantRef)), else the subscription's, when the API echoes one. */
         public readonly ?string $merchantRef = null,
+        /** With merchantRef on an API that sends it: true only when the creator proved control of the receiving wallet. */
+        public readonly ?bool $merchantRefVerified = null,
     ) {
     }
 
@@ -57,6 +59,7 @@ final class ChargeResult
             nextPeriodAt: isset($body['next_period_at']) ? (string) $body['next_period_at'] : null,
             raw: $body,
             merchantRef: is_string($body['merchant_ref'] ?? null) ? $body['merchant_ref'] : null,
+            merchantRefVerified: is_bool($body['merchant_ref_verified'] ?? null) ? $body['merchant_ref_verified'] : null,
         );
     }
 }

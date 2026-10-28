@@ -158,9 +158,16 @@ final class P2FluxClient
      * vendoring this SDK must be able to ship it without shipping a curl call. */
     private static ?CurlTransport $defaultTransport = null;
 
-    /** @var null|array<string, string> The webhook signing keys from capabilities (kid => base64url). */
-    private ?array $signingKeys = null;
-    private int $signingKeysAt = 0;
+    /**
+     * The webhook signing keys from capabilities, per API URL and per PROCESS (not per client): a host
+     * that builds a client per request (Blesta, PHP-FPM) does not fetch them for every forged kid.
+     *
+     * @var array<string, array{keys: array<string, string>, at: int}>
+     */
+    private static array $signingKeys = [];
+
+    /** @var array<string, string> p2flux-merchant-token / p2flux-partner-key, when given. */
+    private array $limitHeaders = [];
 
     /**
      * @param array{apiUrl: string, timeout?: int, transport?: callable, checkoutUrl?: string} $options
@@ -178,6 +185,11 @@ final class P2FluxClient
      *        hosted checkout for the API you use (api.p2flux.com -> https://pay.p2flux.com,
      *        api-test.p2flux.com -> https://pay-test.p2flux.com). Set it when you host the checkout
      *        yourself, e.g. https://pay.yourcompany.com or https://yourcompany.com/pay.
+     *
+     *        merchantToken (from createMerchantToken()) is sent as the p2flux-merchant-token header:
+     *        requests paying that token's wallet are rate limited per wallet (higher) instead of per IP.
+     *        partnerKey (confirmed partners, `<kid>.<secret>`) is sent as p2flux-partner-key. With
+     *        either set, a custom transport receives the headers as a fourth argument.
      */
     public function __construct(array $options)
     {
@@ -194,19 +206,73 @@ final class P2FluxClient
          * stop this client from creating, verifying or charging payments. Empty means not set. */
         $checkoutUrl = $options['checkoutUrl'] ?? null;
         $this->checkoutUrl = is_string($checkoutUrl) && trim($checkoutUrl) !== '' ? trim($checkoutUrl) : null;
+        foreach (['merchantToken' => 'p2flux-merchant-token', 'partnerKey' => 'p2flux-partner-key'] as $option => $header) {
+            if (isset($options[$option]) && is_string($options[$option]) && $options[$option] !== '') {
+                $this->limitHeaders[$header] = $options[$option];
+            }
+        }
+    }
+
+    /**
+     * The exact text a receiving wallet signs (personal_sign) for createMerchantToken(). $chainId is the
+     * API's network (capabilities()['chain_id']); $issuedAt unix seconds, at most 5 minutes old when sent;
+     * $apiUrl the API you send it to (the client's apiUrl) - its origin is in the text, so the signature
+     * is good at that deployment only.
+     */
+    public static function merchantTokenMessage(int $chainId, string $wallet, int $issuedAt, string $apiUrl): string
+    {
+        return "P2Flux merchant token\n\nThis signature only raises your P2Flux API limits. It moves no funds and approves nothing.\n\n"
+            . 'Wallet: ' . strtolower($wallet) . "\nAPI: " . self::origin($apiUrl) . "\nChain ID: " . $chainId . "\nIssued at: " . $issuedAt;
+    }
+
+    /** scheme://host[:port] as a browser's URL.origin writes it: lowercase, default port dropped. */
+    private static function origin(string $url): string
+    {
+        $p = parse_url($url);
+        if (!is_array($p) || !isset($p['scheme'], $p['host'])) {
+            throw new \InvalidArgumentException('apiUrl must be an absolute URL');
+        }
+        $scheme = strtolower($p['scheme']);
+        $port = $p['port'] ?? null;
+        $default = ['https' => 443, 'http' => 80][$scheme] ?? null;
+
+        return $scheme . '://' . strtolower($p['host']) . ($port !== null && $port !== $default ? ':' . $port : '');
+    }
+
+    /**
+     * Prove your receiving wallet once for higher limits: sign merchantTokenMessage() with that wallet
+     * (a Safe works too) and pass the returned merchant_token as the merchantToken option. Valid 30
+     * days; it moves no money and opens no data.
+     *
+     * @param array{wallet: string, signature: string, issued_at: int} $proof
+     * @return array{merchant_token: string, wallet: string, expires_at: int}
+     */
+    public function createMerchantToken(array $proof): array
+    {
+        [$httpStatus, $body] = $this->post('/v1/merchant-token', [
+            'wallet' => (string) ($proof['wallet'] ?? ''),
+            'signature' => (string) ($proof['signature'] ?? ''),
+            'issued_at' => (int) ($proof['issued_at'] ?? 0),
+        ]);
+        $this->throwIfError($httpStatus, $body);
+
+        return $body;
     }
 
     /**
      * Does this on-chain `$reference` commit to your `$merchantRef`? True exactly when
      * reference == keccak256("p2flux.merchant_ref.v1" || salt || merchant_ref), computed here with no
-     * call to P2Flux - so you, or an auditor you hand the salt to, can prove which order a payment on
-     * chain settled. `$salt` is the `reference_salt` the payment came back with. Malformed input is
-     * false. Pure PHP (P2Flux\Keccak), no extension.
+     * call to P2Flux - so you, or an auditor you hand the salt to, can prove the payment on chain was
+     * CREATED WITH that merchant_ref. Not who created it: anyone can create a payment to any wallet with
+     * any merchant_ref. Ownership comes from your own records (the intent or reference you stored for the
+     * order) or `merchant_ref_verified` (the creator proved control of the receiving wallet). `$salt` is
+     * the `reference_salt` the payment came back with. Malformed input is false. Pure PHP
+     * (P2Flux\Keccak), no extension.
      */
     public static function checkMerchantRef(string $reference, string $salt, string $merchantRef): bool
     {
         if (preg_match('/^0x[0-9a-fA-F]{64}$/', $reference) !== 1 || preg_match('/^0x[0-9a-fA-F]{64}$/', $salt) !== 1
-            || preg_match('~^[A-Za-z0-9._:/#-]{1,64}$~', $merchantRef) !== 1) {
+            || preg_match('~^[A-Za-z0-9._:/#-]{1,64}$~D', $merchantRef) !== 1) {
             return false;
         }
         if (!class_exists(Keccak::class)) {
@@ -229,7 +295,7 @@ final class P2FluxClient
      *
      * @param array{keys?: array<string, string>, tolerance_sec?: int, now?: int} $options
      *        keys: kid => base64url public key; default the API's own, from capabilities(), fetched
-     *        once per client. tolerance_sec defaults to 300; now (unix seconds) is for tests.
+     *        once per process. tolerance_sec (int >= 0) defaults to 300; now (unix seconds) is for tests.
      * @return array<string, mixed>
      */
     public function verifyWebhook(string $rawBody, string $header, array $options = []): array
@@ -244,7 +310,11 @@ final class P2FluxClient
         $t = $parts['t'] ?? '';
         $kid = $parts['kid'] ?? '';
         $invalid = new P2FluxException('WEBHOOK_SIGNATURE_INVALID', 'INVALID_REQUEST');
-        if (preg_match('/^\d{1,12}$/', $t) !== 1 || $kid === '' || ($parts['v1'] ?? '') === '') {
+        $tolerance = filter_var($options['tolerance_sec'] ?? 300, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if (!is_int($tolerance)) {
+            throw new \InvalidArgumentException('tolerance_sec must be a whole number of seconds, 0 or more');
+        }
+        if (preg_match('/^\d{1,12}$/D', $t) !== 1 || $kid === '' || ($parts['v1'] ?? '') === '') {
             throw $invalid;
         }
         $key = isset($options['keys']) ? ($options['keys'][$kid] ?? null) : $this->signingKey($kid);
@@ -260,7 +330,7 @@ final class P2FluxClient
             throw $invalid;
         }
         // Checked after the signature, so a stale answer is only ever given about a genuine P2Flux event.
-        if (abs(($options['now'] ?? time()) - (int) $t) > ($options['tolerance_sec'] ?? 300)) {
+        if (abs(($options['now'] ?? time()) - (int) $t) > $tolerance) {
             throw new P2FluxException('WEBHOOK_TOO_OLD', 'INVALID_REQUEST');
         }
         $event = json_decode($rawBody, true);
@@ -272,23 +342,27 @@ final class P2FluxClient
     }
 
     /**
-     * A webhook signing key by kid, from capabilities: fetched once, again for a kid not seen yet (a
-     * rotation) - but at most once a minute, so forged kids cannot make every check a fetch.
+     * A webhook signing key by kid, from capabilities: fetched once per process, again for a kid not seen
+     * yet (a rotation) - but at most once a minute, so forged kids cannot make every check a fetch. A
+     * failed refetch keeps the keys already known.
      */
     private function signingKey(string $kid): ?string
     {
-        if ($this->signingKeys === null || (!isset($this->signingKeys[$kid]) && time() - $this->signingKeysAt > 60)) {
+        $cached = self::$signingKeys[$this->apiUrl] ?? null;
+        if ($cached === null || (!isset($cached['keys'][$kid]) && time() - $cached['at'] > 60)) {
+            if ($cached !== null) {
+                self::$signingKeys[$this->apiUrl]['at'] = time(); // a failing refetch is still once a minute
+            }
             $keys = [];
             foreach ($this->capabilities()['webhook_signing_keys'] ?? [] as $k) {
                 if (is_string($k['kid'] ?? null) && is_string($k['public_key'] ?? null)) {
                     $keys[$k['kid']] = $k['public_key'];
                 }
             }
-            $this->signingKeys = $keys;
-            $this->signingKeysAt = time();
+            $cached = self::$signingKeys[$this->apiUrl] = ['keys' => $keys, 'at' => time()];
         }
 
-        return $this->signingKeys[$kid] ?? null;
+        return $cached['keys'][$kid] ?? null;
     }
 
     private static function base64UrlDecode(string $value): ?string
@@ -361,7 +435,7 @@ final class P2FluxClient
      * setup and echoed by resolveSubscription() and status(). Not part of any on-chain value.
      *
      * @param array{recipient: string, amount: string, period: int, end?: int, allowance?: string|array{periods: int}, merchant_ref?: string} $terms
-     * @return array{setup_token: string, salt: string, amount: string, merchant_ref?: string, ...}
+     * @return array{setup_token: string, salt: string, amount: string, merchant_ref?: string, merchant_ref_verified?: bool, ...}
      */
     public function createSubscription(array $terms): array
     {
@@ -480,7 +554,7 @@ final class P2FluxClient
      * P2FluxClient::checkMerchantRef() (no API call).
      *
      * @param array{recipient: string, amount: string, gas_payment_mode?: 'native'|'payment_token', notify_url?: string, return_url?: string, private_payment?: 'hinkal', merchant_ref?: string} $terms
-     * @return array{intent: string, reference: string, amount: string, notify_url?: string, return_url?: string, private_payment?: 'hinkal', checkout_url?: string, merchant_ref?: string, reference_salt?: string, ...}
+     * @return array{intent: string, reference: string, amount: string, notify_url?: string, return_url?: string, private_payment?: 'hinkal', checkout_url?: string, merchant_ref?: string, merchant_ref_verified?: bool, reference_salt?: string, ...}
      */
     public function createPayment(array $terms): array
     {
@@ -566,6 +640,22 @@ final class P2FluxClient
     }
 
     /**
+     * ECB daily euro reference rates for USD and GBP, from..to (YYYY-MM-DD, at most 366 days), from
+     * P2Flux's own copy. For statements in EUR or GBP; USDC counts as USD 1:1. A day the ECB did not
+     * publish carries the last published day's rates, named in rate_date.
+     *
+     * @param array{from: string, to: string} $range
+     * @return array{source: 'ECB', base: 'EUR', fetched_at: int, rates: array<string, array{USD: float, GBP: float, rate_date: string}>}
+     */
+    public function rates(array $range): array
+    {
+        [$httpStatus, $body] = $this->post('/v1/rates', ['from' => (string) ($range['from'] ?? ''), 'to' => (string) ($range['to'] ?? '')]);
+        $this->throwIfError($httpStatus, $body);
+
+        return $body;
+    }
+
+    /**
      * The trust boundary for one-time payments: re-reads the receipt on chain and checks it against
      * the signed intent. Never grant access on a browser's word alone - call this server-side.
      *
@@ -587,7 +677,7 @@ final class P2FluxClient
      *     settlement_receipt?: string,
      *     gas_payment_mode?: 'native'|'payment_token',
      *     screening?: 'clear'|'sanctioned'|'unknown',
-     *     merchant_ref?: string,
+     *     merchant_ref?: string, merchant_ref_verified?: bool,
      *     reference_salt?: string,
      *     accounting?: array{
      *         payment_units: string,
@@ -647,7 +737,7 @@ final class P2FluxClient
      *     as_of_block?: int,
      *     gas_payment_mode?: 'native'|'payment_token',
      *     accounting?: array<string, string>,
-     *     merchant_ref?: string,
+     *     merchant_ref?: string, merchant_ref_verified?: bool,
      *     reference_salt?: string,
      *     ...
      * }
@@ -838,7 +928,8 @@ final class P2FluxClient
      * timeout or a crashed worker returns ALREADY_CHARGED instead of charging again.
      *
      * `$merchantRef`: this charge's own invoice number (rules as for createPayment()'s merchant_ref),
-     * echoed as $result->merchantRef and by recoverCharge(). Needs an API with merchant_ref.
+     * echoed as $result->merchantRef and by recoverCharge(). Needs an API with merchant_ref. Send the same merchant_ref when retrying a charge: it is echoed from the request (stateless), so a
+     * retry with another ref echoes that one.
      */
     public function charge(string $subscriptionRef, ?string $merchantRef = null): ChargeResult
     {
@@ -871,7 +962,7 @@ final class P2FluxClient
      * link payment does not commit to it. A self-hosted checkout must be new enough to accept it.
      *
      * @param array{kind: string, recipient: string, amount: string, label?: string, expires_at?: int, gas_payment_mode?: string, period?: int, periods?: int, suspend_after_days?: int, notify_url?: string, return_url?: string, private_payment?: 'hinkal', merchant_ref?: string} $terms
-     * @return array{link: string, manage: string, kind: string, id: string, recipient: string, amount: string, amount_units: string, created_at: int, expires_at: int, return_url?: string, checkout_url?: string, merchant_ref?: string, ...}
+     * @return array{link: string, manage: string, kind: string, id: string, recipient: string, amount: string, amount_units: string, created_at: int, expires_at: int, return_url?: string, checkout_url?: string, merchant_ref?: string, merchant_ref_verified?: bool, ...}
      */
     public function createPaymentLink(array $terms): array
     {
@@ -951,14 +1042,18 @@ final class P2FluxClient
      *
      * Optional `signature`: the `p2flux-signature` header. Given, the raw body (a string) is checked
      * first (verifyWebhook(), with `keys` / `tolerance_sec` as there) and a bad or stale one returns
-     * `confirmed => false` with reason WEBHOOK_SIGNATURE_INVALID / WEBHOOK_TOO_OLD.
+     * `confirmed => false` with reason WEBHOOK_SIGNATURE_INVALID / WEBHOOK_TOO_OLD: answer those with a
+     * 4xx/5xx, never a 2xx, so the event is sent again and shows in the delivery history. `signature`
+     * null or absent (no header: an API before the signing release) checks the event unsigned - accepted
+     * only because the API's verdict decides, never the event body.
      *
      * @param string|array<string, mixed> $notification
      * @param array{reference?: string, link_id?: string, manage?: string, signature?: string, keys?: array<string, string>, tolerance_sec?: int} $expect
-     * A confirmed payment.paid for a payment created with `merchant_ref` also carries `merchant_ref` and
-     * `reference_salt`, taken from the verified answer (never from the event body).
+     * A confirmed payment.paid for a payment created with `merchant_ref` also carries `merchant_ref`,
+     * `reference_salt` and (newer APIs) `merchant_ref_verified`, taken from the verified answer (never
+     * from the event body).
      *
-     * @return array{confirmed: bool, event_id: string, type: string, dedupe_key?: string, reason?: string, payment?: array<string, mixed>, subscriber?: array<string, mixed>, merchant_ref?: string, reference_salt?: string}
+     * @return array{confirmed: bool, event_id: string, type: string, dedupe_key?: string, reason?: string, payment?: array<string, mixed>, subscriber?: array<string, mixed>, merchant_ref?: string, merchant_ref_verified?: bool, reference_salt?: string}
      */
     public function handleNotification(string|array $notification, array $expect): array
     {
@@ -1037,7 +1132,8 @@ final class P2FluxClient
 
             return ['confirmed' => true, 'event_id' => $eventId, 'type' => $type,
                 'dedupe_key' => strtolower((string) $verdict['reference']) . ':' . strtolower((string) ($verdict['tx_hash'] ?? '')), 'payment' => $verdict]
-                + array_filter(['merchant_ref' => $verdict['merchant_ref'] ?? null, 'reference_salt' => $verdict['reference_salt'] ?? null], 'is_string');
+                + array_filter(['merchant_ref' => $verdict['merchant_ref'] ?? null, 'reference_salt' => $verdict['reference_salt'] ?? null], 'is_string')
+                + array_filter(['merchant_ref_verified' => $verdict['merchant_ref_verified'] ?? null], 'is_bool');
         }
 
         if ($type === 'subscription.charged' || $type === 'subscription.updated') {
@@ -1208,7 +1304,10 @@ final class P2FluxClient
     private function post(string $path, array $payload): array
     {
         if ($this->transport !== null) {
-            [$httpStatus, $body] = ($this->transport)($this->apiUrl . $path, $payload, $this->timeout);
+            /* Old transports take three arguments; the headers are passed only when there are some. */
+            [$httpStatus, $body] = $this->limitHeaders === []
+                ? ($this->transport)($this->apiUrl . $path, $payload, $this->timeout)
+                : ($this->transport)($this->apiUrl . $path, $payload, $this->timeout, $this->limitHeaders);
 
             return [(int) $httpStatus, is_array($body) ? $body : []];
         }
@@ -1221,7 +1320,7 @@ final class P2FluxClient
             );
         }
 
-        return (self::$defaultTransport ??= new CurlTransport($this->timeout))($this->apiUrl . $path, $payload, $this->timeout);
+        return (self::$defaultTransport ??= new CurlTransport($this->timeout))($this->apiUrl . $path, $payload, $this->timeout, $this->limitHeaders);
     }
 
 

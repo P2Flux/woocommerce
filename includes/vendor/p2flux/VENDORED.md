@@ -1,7 +1,7 @@
 # Vendored: p2flux/sdk-php
 
 Source: https://github.com/P2Flux/sdk-php branch `feat/finance-ready`, 0.15.0 UNRELEASED (commit
-`c032579ad8ef7c8dc92a793b2c89bb1b6c5ad0ec`), copied with the same two edits as `dev/vendor-sdk.sh` but
+`2babacb444f12855727f033bfdda521604bffaf0`), copied with the same two edits as `dev/vendor-sdk.sh` but
 from that commit, because 0.15.0 is not tagged yet. Before a release, re-run `dev/vendor-sdk.sh` with the
 `v0.15.0` tag; `dev/release-check.sh` fails until then.
 
