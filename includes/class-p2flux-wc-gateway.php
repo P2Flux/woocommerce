@@ -428,15 +428,20 @@ class P2Flux_WC_Gateway extends WC_Payment_Gateway {
 		$recipient   = strtolower( (string) $this->get_option( 'recipient' ) );
 		$client      = P2Flux_WC_Client::for_environment( $environment );
 
+		$terms = array(
+			'recipient' => $recipient,
+			'amount'    => P2Flux_WC_Money::format( $units ),
+			'period'    => $period,
+			'allowance' => P2Flux_WC_Money::allowance_term( (string) $this->get_option( 'allowance', 'unlimited' ) ),
+		);
+		// The signup order's number; each renewal charge later carries its own (P2Flux_WC_Charger).
+		$merchant_ref = P2Flux_WC_Client::merchant_ref( $order );
+		if ( null !== $merchant_ref ) {
+			$terms['merchant_ref'] = $merchant_ref;
+		}
+
 		try {
-			$setup = $client->createSubscription(
-				array(
-					'recipient' => $recipient,
-					'amount'    => P2Flux_WC_Money::format( $units ),
-					'period'    => $period,
-					'allowance' => P2Flux_WC_Money::allowance_term( (string) $this->get_option( 'allowance', 'unlimited' ) ),
-				)
-			);
+			$setup = $client->createSubscription( $terms );
 		} catch ( \Exception $e ) {
 			P2Flux_WC_Logger::error( 'could not create a subscription setup', array( 'order' => $order->get_id(), 'error' => $e->getMessage() ) );
 

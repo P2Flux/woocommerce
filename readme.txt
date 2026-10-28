@@ -283,7 +283,7 @@ working while new ones use the new key.
 == Changelog ==
 
 = 1.3.0 =
-* Each payment and each subscription renewal carries its order number to P2Flux (`merchant_ref`), so payments can be matched to orders in your books and statements. The order note of a verified payment names it. An order number with characters P2Flux does not accept (such as spaces) is left out.
+* Each payment, each subscription signup and each renewal carries its order number to P2Flux (`merchant_ref`), so payments can be matched to orders in your books and statements. The order note of a verified payment names it. An order number with characters P2Flux does not accept (such as spaces) is left out.
 * Works with the current P2Flux API too: if P2Flux does not accept the order number yet, the payment is created without it.
 
 = 1.2.0 =

@@ -3,7 +3,7 @@
 ## 1.3.0 — unreleased
 
 - `merchant_ref` = the order number (`get_order_number()`, trimmed; left out unless it matches
-  `^[A-Za-z0-9._:/#-]{1,64}$`) on every one-time `createPayment()` and on every renewal
+  `^[A-Za-z0-9._:/#-]{1,64}$`) on every one-time `createPayment()`, on the subscription signup (`createSubscription()`) and on every renewal
   `charge($capability, $merchantRef)` (the renewal order's own number). The "verified" / "collected"
   order notes append "Merchant reference: X." when the API's answer carries one.
 - Compatibility: an API without merchant_ref refuses the field as `400 INVALID_REQUEST` (it names no
