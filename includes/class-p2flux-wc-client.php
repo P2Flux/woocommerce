@@ -147,7 +147,7 @@ class P2Flux_WC_Client {
 	/**
 	 * What P2Flux accepts as a merchant_ref. A value that does not match is left out, never altered.
 	 */
-	const MERCHANT_REF = '~^[A-Za-z0-9._:/#-]{1,64}$~';
+	const MERCHANT_REF = '~^[A-Za-z0-9._:/#-]{1,64}$~D';
 
 	/**
 	 * The order number as P2Flux's merchant_ref, or null when it cannot be sent as is.

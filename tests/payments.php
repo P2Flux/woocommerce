@@ -201,6 +201,7 @@ P2Flux_WC_Payments::ensure_intent( $order, context() );
 $sent = p2flux_test_calls( '/v1/payments' );
 check( 'an order number P2Flux would refuse is left out, not altered', 1 === count( $sent ) && ! array_key_exists( 'merchant_ref', $sent[0]['payload'] ) );
 check( 'the helper accepts a sequential-number style ref', 'WC-2026/00521#a' === P2Flux_WC_Client::merchant_ref( (function () { $o = new P2Flux_Test_Order( 1 ); $o->number = ' WC-2026/00521#a '; return $o; })() ) );
+check( 'an echoed merchant_ref with a trailing newline is not put in a note', '' === P2Flux_WC_Client::merchant_ref_note( "1001\n" ) && '' !== P2Flux_WC_Client::merchant_ref_note( '1001' ) );
 check( 'and refuses one longer than 64', null === P2Flux_WC_Client::merchant_ref( (function () { $o = new P2Flux_Test_Order( 1 ); $o->number = str_repeat( '9', 65 ); return $o; })() ) );
 
 echo "\nmerchant_ref against an API that does not know it yet\n";
