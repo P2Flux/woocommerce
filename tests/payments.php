@@ -244,6 +244,17 @@ p2flux_test_reset_calls();
 P2Flux_WC_Payments::ensure_intent( $order, context() );
 check( 'nor is any other refusal', 1 === count( p2flux_test_calls( '/v1/payments' ) ) );
 
+$order = new_order( 526 );
+p2flux_test_respond(
+	'/v1/payments',
+	static function ( $payload ) {
+		return isset( $payload['merchant_ref'] ) ? array( 400, array( 'error' => 'INVALID_REQUEST' ) ) : array( 503, array( 'error' => 'UNAVAILABLE' ) );
+	}
+);
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+$memo = array_filter( array_keys( $GLOBALS['p2flux_test_transients'] ?? array() ), static fn( $k ) => 0 === strpos( $k, 'p2flux_wc_no_mr_' ) );
+check( 'a 400 then a 503 does not drop merchant_ref for an hour (only a success proves an old API)', array() === $memo );
+
 echo "\nminting is serialised by the order's intent lock\n";
 $order = new_order( 502 );
 respond_create();
