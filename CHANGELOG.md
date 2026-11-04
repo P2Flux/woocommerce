@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 — unreleased
+## 1.3.0 — 2026-11-04
 
 - `merchant_ref` = the order number (`get_order_number()`, trimmed; left out unless it matches
   `^[A-Za-z0-9._:/#-]{1,64}$`) on every one-time `createPayment()`, on the subscription signup (`createSubscription()`) and on every renewal
