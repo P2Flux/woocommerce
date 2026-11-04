@@ -227,7 +227,9 @@ class P2Flux_WC_Jobs {
 		}
 
 		P2Flux_WC_Periods::set_state( $auth_id, $period, P2Flux_WC_Periods::SETTLED, array( 'tx_hash' => $found['tx_hash'] ) );
-		P2Flux_WC_Charger::mark_paid( $order, $record, $period, (string) $found['tx_hash'], isset( $found['merchant_ref'] ) ? $found['merchant_ref'] : null );
+		// No merchant_ref here: recoverCharge() cannot send one, so the API echoes the subscription's own
+		// (the signup order's number), which is not this renewal's.
+		P2Flux_WC_Charger::mark_paid( $order, $record, $period, (string) $found['tx_hash'], null );
 		P2Flux_WC_Collection::set( $subscription, P2Flux_WC_Collection::NORMAL, array( 'renewal_order_id' => 0 ) );
 	}
 
