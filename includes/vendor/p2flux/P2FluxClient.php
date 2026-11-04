@@ -159,8 +159,9 @@ final class P2FluxClient
     private static ?CurlTransport $defaultTransport = null;
 
     /**
-     * The webhook signing keys from capabilities, per API URL and per PROCESS (not per client): a host
-     * that builds a client per request (Blesta, PHP-FPM) does not fetch them for every forged kid.
+     * The webhook signing keys from capabilities, per API URL and per PROCESS (not per client): a
+     * long-running worker fetches them once. Under PHP-FPM statics reset with every request, so each
+     * verify there costs one capabilities call - pass `keys` to verifyWebhook() to avoid it.
      *
      * @var array<string, array{keys: array<string, string>, at: int}>
      */
@@ -310,6 +311,9 @@ final class P2FluxClient
         $t = $parts['t'] ?? '';
         $kid = $parts['kid'] ?? '';
         $invalid = new P2FluxException('WEBHOOK_SIGNATURE_INVALID', 'INVALID_REQUEST');
+        if (!function_exists('sodium_crypto_sign_verify_detached')) {
+            throw new \LogicException('verifyWebhook() needs the PHP sodium extension (ext-sodium)');
+        }
         $tolerance = filter_var($options['tolerance_sec'] ?? 300, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
         if (!is_int($tolerance)) {
             throw new \InvalidArgumentException('tolerance_sec must be a whole number of seconds, 0 or more');
