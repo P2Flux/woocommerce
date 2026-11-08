@@ -348,6 +348,17 @@ check( 'a bad nonce is refused', false === $refused['success'] );
 $refused = ajax( 'verify', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 506, 'order_key' => 'wc_order_key_506', 'tx_hash' => 'not-a-hash' ) );
 check( 'a malformed transaction hash is refused', false === $refused['success'] );
 
+$order = new_order( 509 );
+respond_create();
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/payments/verify', array( 'valid' => false, 'code' => 'PAYMENT_CONFIRMING', 'tx_hash' => tx( 9 ) ) );
+$post  = array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 509, 'order_key' => 'wc_order_key_509', 'tx_hash' => tx( 9 ) );
+$first = ajax( 'verify', $post );
+$again = ajax( 'verify', $post );
+check( 'verify asks the API at most once per order every few seconds', 1 === count( p2flux_test_calls( '/v1/payments/verify' ) ) );
+check( 'and a call inside the cooldown answers "still confirming", so the page waits and asks again', true === $again['success'] && 'confirming' === $again['data']['status'] );
+
 // --- a second payment ----------------------------------------------------------------------------
 
 echo "\na second real payment is flagged for a refund, never applied twice\n";

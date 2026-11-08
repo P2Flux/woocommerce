@@ -12,6 +12,8 @@
 	'use strict';
 
 	var config = window.p2fluxWc;
+	// Automatic payment checks after the wallet sent: 120 x 5 s, about 10 minutes.
+	var MAX_POLLS = 120;
 	if ( ! config ) {
 		return;
 	}
@@ -111,7 +113,8 @@
 	 * PAYMENT_CONFIRMING is not a failure: the money is on chain and settling. The page keeps asking
 	 * about that same transaction, and never suggests paying again.
 	 */
-	function verify( txHash, receipt ) {
+	function verify( txHash, receipt, polls ) {
+		polls = polls || 0;
 		say( config.i18n.verifying, 'busy' );
 		transactionKnown();
 
@@ -126,8 +129,13 @@
 				if ( 'confirming' === result.status ) {
 					say( config.i18n.confirming, 'busy' );
 					paymentMayExist();
+					// About 10 minutes of automatic checks; after that the customer asks with the button.
+					if ( polls >= MAX_POLLS ) {
+						offerCheck();
+						return;
+					}
 					window.setTimeout( function () {
-						verify( txHash, '' );
+						verify( txHash, '', polls + 1 );
 					}, 5000 );
 					return;
 				}
