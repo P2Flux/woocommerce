@@ -131,6 +131,7 @@
 					paymentMayExist();
 					// About 10 minutes of automatic checks; after that the customer asks with the button.
 					if ( polls >= MAX_POLLS ) {
+						say( config.i18n.stillConfirming, 'warn' );
 						offerCheck();
 						return;
 					}
@@ -399,10 +400,14 @@
 					if ( 'confirming' === result.status ) {
 						transactionKnown();
 					}
-					say(
-						'confirming' === result.status ? config.i18n.confirming : config.i18n.notFound,
-						'confirming' === result.status ? 'busy' : 'warn'
-					);
+					if ( 'wait' === result.status ) {
+						say( config.i18n.wait, 'warn' );
+					} else {
+						say(
+							'confirming' === result.status ? config.i18n.confirming : config.i18n.notFound,
+							'confirming' === result.status ? 'busy' : 'warn'
+						);
+					}
 					check.disabled = false;
 				} )
 				.catch( function () {

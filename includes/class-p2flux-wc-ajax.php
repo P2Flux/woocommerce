@@ -74,7 +74,9 @@ class P2Flux_WC_Ajax {
 			wp_send_json_error( array( 'code' => 'NO_INTENT' ), 400 );
 		}
 
-		if ( $order->is_paid() ) {
+		// The transaction that already paid this order: nothing to ask. Any other transaction still goes to
+		// the API, so a second payment is found and flagged for a refund.
+		if ( $order->is_paid() && 0 === strcasecmp( $hash, (string) $order->get_meta( '_p2flux_tx_hash' ) ) ) {
 			wp_send_json_success(
 				array(
 					'status'   => 'paid',
@@ -127,7 +129,8 @@ class P2Flux_WC_Ajax {
 		// key authorizes this call, and it should not be a lever on the merchant's API quota.
 		$cooldown = 'p2flux_wc_check_' . $order->get_id();
 		if ( get_transient( $cooldown ) ) {
-			wp_send_json_success( array( 'status' => 'not_found' ) );
+			// Not "no payment yet": this order was checked seconds ago and the answer is not known here.
+			wp_send_json_success( array( 'status' => 'wait' ) );
 		}
 		set_transient( $cooldown, 1, 10 );
 

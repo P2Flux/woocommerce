@@ -295,6 +295,8 @@ class P2Flux_WC_Checkout_Page {
 				'closed'     => __( 'The wallet window closed. If you confirmed the payment, use the link below — do not pay a second time.', 'p2flux-for-woocommerce' ),
 				'checking'   => __( 'Looking for your payment on the blockchain…', 'p2flux-for-woocommerce' ),
 				'notFound'   => __( 'No payment has arrived yet. If you have just confirmed one, wait a moment and check again.', 'p2flux-for-woocommerce' ),
+				'wait'       => __( 'Checked a moment ago. Please wait a few seconds and check again.', 'p2flux-for-woocommerce' ),
+				'stillConfirming' => __( 'Your payment is still being confirmed. Use the button below to check again — do not pay a second time.', 'p2flux-for-woocommerce' ),
 				'failed'     => __( 'That payment could not be completed. Nothing was taken from your wallet.', 'p2flux-for-woocommerce' ),
 				'retry'      => __( 'We could not reach the payment service just now. Your payment, if you made one, is safe — check again in a moment.', 'p2flux-for-woocommerce' ),
 				'payUsdc'    => __( 'Pay with USDC — no ETH required', 'p2flux-for-woocommerce' ),
