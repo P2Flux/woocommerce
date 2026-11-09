@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.1 — unreleased
+## 1.3.1 — 2026-11-09
 
 - The checkout's payment check asks the P2Flux API at most once per order every 3 seconds (the page asks
   every 5, so a normal payment never notices); an already paid order answers at once without asking.
