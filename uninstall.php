@@ -29,6 +29,8 @@ delete_transient( 'p2flux_wc_caps_mainnet' );
 if ( function_exists( 'wc_get_orders' ) ) {
 	foreach ( wc_get_orders( array( 'payment_method' => 'p2flux', 'status' => array( 'pending', 'failed' ), 'limit' => -1, 'return' => 'ids' ) ) as $p2flux_wc_order_id ) {
 		delete_transient( 'p2flux_wc_mode_' . (int) $p2flux_wc_order_id );
+		delete_transient( 'p2flux_wc_verify_' . (int) $p2flux_wc_order_id );
+		delete_transient( 'p2flux_wc_check_' . (int) $p2flux_wc_order_id );
 	}
 }
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1 — 2026-11-09
+
+- The checkout's payment check asks the P2Flux API at most once per order every 3 seconds (the page asks
+  every 5, so a normal payment never notices); an already paid order answers at once without asking.
+- The page stops checking automatically after about 10 minutes, says the payment is still being confirmed,
+  and offers the "check my payment" button.
+- A second payment on an already paid order still goes to the API and is flagged for a refund.
+- "Check my payment" pressed twice within 10 seconds answers "checked a moment ago" instead of "no payment
+  has arrived yet".
+- Uninstall also removes the short-lived per-order check transients.
+
 ## 1.3.0 — 2026-11-04
 
 - `merchant_ref` = the order number (`get_order_number()`, trimmed; left out unless it matches

@@ -21,7 +21,8 @@ defined( 'ABSPATH' ) || exit;
 class P2Flux_WC_Ajax {
 
 	/** Per-order transient that spaces out mode switches. Uninstall deletes it by this name. */
-	const MODE_COOLDOWN = 'p2flux_wc_mode_';
+	const MODE_COOLDOWN   = 'p2flux_wc_mode_';
+	const VERIFY_COOLDOWN = 'p2flux_wc_verify_';
 
 	/**
 	 * Register them.
@@ -73,6 +74,26 @@ class P2Flux_WC_Ajax {
 			wp_send_json_error( array( 'code' => 'NO_INTENT' ), 400 );
 		}
 
+		// The transaction that already paid this order: nothing to ask. Any other transaction still goes to
+		// the API, so a second payment is found and flagged for a refund.
+		if ( $order->is_paid() && 0 === strcasecmp( $hash, (string) $order->get_meta( '_p2flux_tx_hash' ) ) ) {
+			wp_send_json_success(
+				array(
+					'status'   => 'paid',
+					'redirect' => $order->get_checkout_order_received_url(),
+				)
+			);
+		}
+
+		// One API verification per order every few seconds: the order key authorizes this call, and it
+		// should not be a lever on the merchant's API quota. The page polls every 5 seconds, so a normal
+		// payment never meets this; a faster caller is told "still confirming" and asks again later.
+		$cooldown = self::VERIFY_COOLDOWN . $order->get_id();
+		if ( get_transient( $cooldown ) ) {
+			wp_send_json_success( array( 'status' => 'confirming' ) );
+		}
+		set_transient( $cooldown, 1, 3 );
+
 		$result = P2Flux_WC_Payments::verify( $order, $intent['intent'], $hash, $receipt );
 
 		wp_send_json_success( $result );
@@ -108,7 +129,8 @@ class P2Flux_WC_Ajax {
 		// key authorizes this call, and it should not be a lever on the merchant's API quota.
 		$cooldown = 'p2flux_wc_check_' . $order->get_id();
 		if ( get_transient( $cooldown ) ) {
-			wp_send_json_success( array( 'status' => 'not_found' ) );
+			// Not "no payment yet": this order was checked seconds ago and the answer is not known here.
+			wp_send_json_success( array( 'status' => 'wait' ) );
 		}
 		set_transient( $cooldown, 1, 10 );
 

@@ -348,6 +348,38 @@ check( 'a bad nonce is refused', false === $refused['success'] );
 $refused = ajax( 'verify', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 506, 'order_key' => 'wc_order_key_506', 'tx_hash' => 'not-a-hash' ) );
 check( 'a malformed transaction hash is refused', false === $refused['success'] );
 
+$order = new_order( 519 );
+respond_create();
+P2Flux_WC_Payments::ensure_intent( $order, context() );
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/payments/verify', array( 'valid' => false, 'code' => 'PAYMENT_CONFIRMING', 'tx_hash' => tx( 9 ) ) );
+$post  = array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 519, 'order_key' => 'wc_order_key_519', 'tx_hash' => tx( 9 ) );
+$first = ajax( 'verify', $post );
+$again = ajax( 'verify', $post );
+check( 'verify asks the API at most once per order every few seconds', 1 === count( p2flux_test_calls( '/v1/payments/verify' ) ) );
+check( 'and a call inside the cooldown answers "still confirming", so the page waits and asks again', true === $again['success'] && 'confirming' === $again['data']['status'] );
+
+// Paid already, and the other open intent is paid too (an old tab): the second payment must still reach
+// the API, so it is flagged for a refund instead of answered "paid" from the order alone.
+$order = new_order( 610 );
+respond_create();
+$first = P2Flux_WC_Payments::ensure_intent( $order, context() );
+$aged  = P2Flux_WC_Intents::all( $order );
+$aged[0]['created'] = time() - 600;
+$aged[0]['expires'] = time() + 30;
+$order->update_meta_data( P2Flux_WC_Intents::LEDGER_META, wp_json_encode( array( 'v' => 1, 'items' => $aged ) ) );
+respond_create();
+$second = P2Flux_WC_Payments::ensure_intent( $order, context() );
+P2Flux_WC_Payments::settle( $order, $second['intent'], verdict( 30 ) );
+p2flux_test_reset_calls();
+p2flux_test_respond( '/v1/payments/verify', verdict( 31 ) );
+$again = ajax( 'verify', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 610, 'order_key' => 'wc_order_key_610', 'tx_hash' => tx( 31 ), 'intent' => $first['intent'] ) );
+check( 'a second payment on a paid order still goes to the API', 1 === count( p2flux_test_calls( '/v1/payments/verify' ) ) );
+check( 'and is flagged for a refund', '' !== (string) $order->get_meta( '_p2flux_unexpected_payment' ) );
+p2flux_test_reset_calls();
+$same = ajax( 'verify', array( 'nonce' => 'nonce-p2flux_wc', 'order_id' => 610, 'order_key' => 'wc_order_key_610', 'tx_hash' => tx( 30 ), 'intent' => $second['intent'] ) );
+check( 'the transaction that paid the order answers paid without asking', 'paid' === $same['data']['status'] && 0 === count( p2flux_test_calls( '/v1/payments/verify' ) ) );
+
 // --- a second payment ----------------------------------------------------------------------------
 
 echo "\na second real payment is flagged for a refund, never applied twice\n";

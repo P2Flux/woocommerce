@@ -6,7 +6,7 @@ Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
 WC tested up to: 11.0
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -281,6 +281,13 @@ working while new ones use the new key.
 9. A simple product turned into a P2Flux Native Subscription with one checkbox and an interval.
 
 == Changelog ==
+
+= 1.3.1 =
+* The payment page checks for the payment less often (at most once every 3 seconds per order), so busy shops make fewer calls to P2Flux. Normal payments are not slower.
+* After about 10 minutes the page stops checking on its own, says the payment is still being confirmed and offers the "Check my payment" button.
+* A second payment on an order that is already paid is still flagged for a refund.
+* Pressing "Check my payment" twice quickly now says it was checked a moment ago.
+* Uninstalling also removes the short-lived payment-check data.
 
 = 1.3.0 =
 * Each payment, each subscription signup and each renewal carries its order number to P2Flux (`merchant_ref`), so payments can be matched to orders in your books and statements. The order note of a verified payment names it. An order number with characters P2Flux does not accept (such as spaces) is left out.

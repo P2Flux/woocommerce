@@ -12,6 +12,8 @@
 	'use strict';
 
 	var config = window.p2fluxWc;
+	// Automatic payment checks after the wallet sent: 120 x 5 s, about 10 minutes.
+	var MAX_POLLS = 120;
 	if ( ! config ) {
 		return;
 	}
@@ -111,7 +113,8 @@
 	 * PAYMENT_CONFIRMING is not a failure: the money is on chain and settling. The page keeps asking
 	 * about that same transaction, and never suggests paying again.
 	 */
-	function verify( txHash, receipt ) {
+	function verify( txHash, receipt, polls ) {
+		polls = polls || 0;
 		say( config.i18n.verifying, 'busy' );
 		transactionKnown();
 
@@ -126,8 +129,14 @@
 				if ( 'confirming' === result.status ) {
 					say( config.i18n.confirming, 'busy' );
 					paymentMayExist();
+					// About 10 minutes of automatic checks; after that the customer asks with the button.
+					if ( polls >= MAX_POLLS ) {
+						say( config.i18n.stillConfirming, 'warn' );
+						offerCheck();
+						return;
+					}
 					window.setTimeout( function () {
-						verify( txHash, '' );
+						verify( txHash, '', polls + 1 );
 					}, 5000 );
 					return;
 				}
@@ -391,10 +400,14 @@
 					if ( 'confirming' === result.status ) {
 						transactionKnown();
 					}
-					say(
-						'confirming' === result.status ? config.i18n.confirming : config.i18n.notFound,
-						'confirming' === result.status ? 'busy' : 'warn'
-					);
+					if ( 'wait' === result.status ) {
+						say( config.i18n.wait, 'warn' );
+					} else {
+						say(
+							'confirming' === result.status ? config.i18n.confirming : config.i18n.notFound,
+							'confirming' === result.status ? 'busy' : 'warn'
+						);
+					}
 					check.disabled = false;
 				} )
 				.catch( function () {
